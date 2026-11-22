@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 
-from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,6 +15,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.db.errors import is_unique_violation
 from app.models.user import User
 from app.repositories import users as users_repo
 from app.schemas.auth import LoginRequest, RegisterRequest
@@ -93,7 +93,4 @@ def _email_taken() -> Conflict:
 
 
 def _is_email_unique_violation(exc: IntegrityError) -> bool:
-    orig = exc.orig
-    return (
-        isinstance(orig, UniqueViolation) and orig.diag.constraint_name == EMAIL_UNIQUE_CONSTRAINT
-    )
+    return is_unique_violation(exc, EMAIL_UNIQUE_CONSTRAINT)

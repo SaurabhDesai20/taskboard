@@ -3,13 +3,18 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import type { FieldErrors } from './formErrors'
 
+interface FormHelpers {
+  /** Back to the initial values, with no errors shown (e.g. after a successful submit). */
+  reset: () => void
+}
+
 interface UseFormOptions<F extends string> {
   initialValues: Record<F, string>
   /** Field order: decides which invalid field receives focus. */
   fields: readonly F[]
   validate: (values: Record<F, string>) => FieldErrors<F>
   /** Called with the current values when the form is submitted without client errors. */
-  onValidSubmit: (values: Record<F, string>) => void
+  onValidSubmit: (values: Record<F, string>, helpers: FormHelpers) => void
 }
 
 export function useForm<F extends string>({
@@ -22,8 +27,15 @@ export function useForm<F extends string>({
   // Errors appear only after the first submit, then follow the user's edits.
   const [submitted, setSubmitted] = useState(false)
   const inputs = useRef<Partial<Record<F, HTMLInputElement | null>>>({})
+  // The first initial values: callers often pass a new object literal on every render.
+  const [resetValues] = useState(initialValues)
 
   const errors: FieldErrors<F> = submitted ? validate(values) : {}
+
+  function reset() {
+    setValues(resetValues)
+    setSubmitted(false)
+  }
 
   function register(field: F) {
     return {
@@ -48,8 +60,8 @@ export function useForm<F extends string>({
       inputs.current[firstInvalid]?.focus()
       return
     }
-    onValidSubmit(values)
+    onValidSubmit(values, { reset })
   }
 
-  return { values, errors, register, handleSubmit }
+  return { values, errors, register, handleSubmit, reset }
 }

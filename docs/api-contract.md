@@ -179,25 +179,30 @@ Strings are trimmed before validation, except `password`, which is used exactly 
 
 ### 1.10 Access rules
 
-Role permission matrix (from PLAN.md section 4; `frontend/src/lib/permissions.ts` mirrors it):
+Role permission matrix (from PLAN.md section 4). The backend's `app/services/permissions.py` (`can(role, action)`) and `frontend/src/lib/permissions.ts` use the same action identifiers:
 
-| Action | Owner | Admin | Member | Viewer |
-|---|:-:|:-:|:-:|:-:|
-| View workspace, projects, tasks, comments, activity | Y | Y | Y | Y |
-| Create/edit/move tasks, assign, set due date | Y | Y | Y | - |
-| Comment | Y | Y | Y | - |
-| Edit/delete **own** comment | Y | Y | Y | - |
-| Delete any comment, delete any task | Y | Y | - | - |
-| Create/edit/archive projects | Y | Y | - | - |
-| Add/remove members, change roles (not owners) | Y | Y | - | - |
-| Rename/delete workspace, transfer ownership, promote to admin | Y | - | - | - |
+| Action id | What it covers | Owner | Admin | Member | Viewer |
+|---|---|:-:|:-:|:-:|:-:|
+| `workspace.view` | View workspace, members, projects, tasks, comments, activity | Y | Y | Y | Y |
+| `task.write` | Create/edit/move tasks, assign, set due date | Y | Y | Y | - |
+| `comment.create` | Comment | Y | Y | Y | - |
+| `comment.edit_own` | Edit/delete **own** comment | Y | Y | Y | - |
+| `comment.delete_any` | Delete any comment | Y | Y | - | - |
+| `task.delete` | Delete any task | Y | Y | - | - |
+| `project.manage` | Create/edit/archive projects | Y | Y | - | - |
+| `member.manage` | Add/remove members, change roles (only `member` and `viewer` targets and grants) | Y | Y | - | - |
+| `member.promote` | Grant `admin`/`owner` (transfer ownership), change or remove admins and owners | Y | - | - | - |
+| `workspace.manage` | Rename/delete the workspace | Y | - | - | - |
+
+Each endpoint's "min role" is the lowest role allowed its action, e.g. `PATCH /workspaces/{wid}` performs `workspace.manage` (owner).
 
 How the server applies it, in this order:
 
 1. Resolve the resource to its workspace (task → project → workspace).
 2. Not found, **or** the user is not a member → `404 not_found`. Never `403`, so the API does not reveal that the resource exists.
-3. A member whose role is too low → `403 forbidden`.
-4. Business rules → `409`/`422`.
+3. A member whose role is too low for the endpoint's action → `403 forbidden` with `details.reason = "insufficient_role"`. The message names the allowed roles, e.g. `"Only owners and admins can add, remove or change members"`.
+4. Request validation → `422`. (Steps 2 and 3 run first, so a non-member sending an invalid body still gets `404`.)
+5. Business rules → `403` (`own_role`, `protected_member`), `409`, `422`.
 
 Membership rules:
 
@@ -307,11 +312,20 @@ The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` w
 | `User` | `UserRead` | `200`/`201` of `POST /auth/register`, `POST /auth/login`, `GET /auth/me` | 1 |
 | register request body | `RegisterRequest` | `POST /auth/register` | 1 |
 | login request body | `LoginRequest` | `POST /auth/login` | 1 |
+| `Workspace` | `WorkspaceRead` | `200` of `GET /workspaces` (array), `GET`/`PATCH /workspaces/{wid}`; `201` of `POST /workspaces` | 2 |
+| create-workspace body | `WorkspaceCreate` | `POST /workspaces` | 2 |
+| update-workspace body | `WorkspaceUpdate` | `PATCH /workspaces/{wid}` | 2 |
+| `Member` | `MemberRead` | `200` of `GET /workspaces/{wid}/members` (array), `PATCH /workspaces/{wid}/members/{uid}`; `201` of `POST /workspaces/{wid}/members` | 2 |
+| add-member body | `MemberCreate` | `POST /workspaces/{wid}/members` | 2 |
+| change-role body | `MemberUpdate` | `PATCH /workspaces/{wid}/members/{uid}` | 2 |
+| `Role` | `Role` (string enum) | `WorkspaceRead.my_role`, `MemberRead.role`, `MemberCreate.role`, `MemberUpdate.role` | 2 |
 | `ErrorEnvelope` | `ErrorEnvelope` (its `error` is `ErrorBody`) | every documented error response, `422` included | 0 |
 | health response | `HealthRead` | `GET /health` | 0 |
 | session cookie | security scheme `CookieAuth` (`apiKey`, in `cookie`, name `access_token`) | every endpoint that requires the cookie | 1 |
 
 - Error responses (including `422`) are documented with `ErrorEnvelope`. FastAPI's default `HTTPValidationError` schema is not used, because the API never returns that shape.
+- Path parameters keep the names used in this document: `wid` (workspace id) and `uid` (a member's user id).
+- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role` are `string`/`Role`, never `null`).
 - Later phases add rows here as they implement endpoints, following the same pattern: `<Entity>Read` for response objects, `<Entity>Create` / `<Entity>Update` for request bodies, and `<Action>Request` for action bodies.
 
 ---
@@ -402,11 +416,13 @@ Errors: `401` when not logged in (the `unauthorized` envelope in 1.3). The UI ca
 
 ---
 
-### 3.3 Workspaces (Phase 2)
+### 3.3 Workspaces (Phase 2, implemented)
+
+Every `/workspaces/{wid}` endpoint returns `404 not_found` (message `"Workspace not found"`) when the workspace does not exist or the caller is not a member, and `422` (`field: "wid", location: "path"`) for a malformed id.
 
 #### `GET /workspaces` (auth)
 
-Workspaces the user belongs to, ordered by `name`. `200`:
+Workspaces the user belongs to, ordered by `name` (case-insensitive). `[]` when there are none. `200`:
 
 ```json
 [
@@ -423,7 +439,7 @@ Workspaces the user belongs to, ordered by `name`. `200`:
 
 #### `POST /workspaces` (auth)
 
-The creator becomes `owner`. `slug` is optional. When omitted, the server derives it from `name`: lowercase, runs of non-alphanumerics become `-`, trimmed, max 48 chars, `"workspace"` if empty. If the derived slug is taken, it appends `-2`, `-3`, and so on.
+The creator becomes `owner`. `slug` is optional (omitted or `null`). When omitted, the server derives it from `name`: lowercase, runs of non-alphanumerics (anything outside `a-z0-9`, including accented letters) become `-`, trimmed of `-`, max 48 chars, `"workspace"` if empty. If the derived slug is taken, it appends `-2`, `-3`, and so on, shortening the base so the result still fits 48 chars (`"Acme Inc."` → `acme-inc`, then `acme-inc-2`).
 
 Request:
 
@@ -434,7 +450,7 @@ Request:
 `201`: a `Workspace` with `"my_role": "owner"` (same shape as above).
 
 Errors:
-- `409` with `details.reason = "slug_taken"`, only when an explicit `slug` is taken.
+- `409` with `details.reason = "slug_taken"`, message `"This workspace URL is already taken"`, when an explicit `slug` is taken. A derived slug never conflicts, except in the unlikely case that concurrent requests take every free candidate three times in a row; retrying succeeds.
 - `422`.
 
 #### `GET /workspaces/{wid}` (viewer)
@@ -443,7 +459,7 @@ Errors:
 
 #### `PATCH /workspaces/{wid}` (owner)
 
-Only `name` can change; the slug is immutable. Request:
+Only `name` can change; the slug is immutable (a `slug` in the body is ignored). `{}` returns the workspace unchanged; `"name": null` is a `422`. Request:
 
 ```json
 { "name": "Acme Inc" }
@@ -459,11 +475,13 @@ Errors: `403`, `404`.
 
 ---
 
-### 3.4 Members (Phase 2)
+### 3.4 Members (Phase 2, implemented)
+
+The `404` and malformed-id rules of 3.3 apply. `PATCH` and `DELETE` also return `404` with message `"Member not found"` when `uid` is not a member of the workspace (or not a user at all), and `422` (`field: "uid"`) for a malformed id.
 
 #### `GET /workspaces/{wid}/members` (viewer)
 
-Ordered by role (owner, admin, member, viewer), then `name`. `200`:
+Ordered by role (owner, admin, member, viewer), then `name` (case-insensitive). `200`:
 
 ```json
 [
@@ -486,7 +504,7 @@ Ordered by role (owner, admin, member, viewer), then `name`. `200`:
 
 #### `POST /workspaces/{wid}/members` (admin)
 
-Adds an **existing** registered user by email. Request:
+Adds an **existing** registered user by email (trimmed, matched case-insensitively). Both fields are required. Request:
 
 ```json
 { "email": "ben@example.com", "role": "member" }
@@ -504,15 +522,16 @@ Adds an **existing** registered user by email. Request:
 }
 ```
 
-Errors:
+Errors, in the order they are checked:
+- `404` (workspace), then `403 insufficient_role` (member or viewer).
+- `422` for an invalid body.
+- `403 protected_member` when an admin grants `admin` or `owner`. Message: `"Only owners can grant the admin or owner role"`.
 - `422` with `field: "email"`, message `"No user with this email"`, when no account exists.
 - `409 already_member`.
-- `403 protected_member` when an admin grants `admin` or `owner`.
-- `403`, `404`.
 
 #### `PATCH /workspaces/{wid}/members/{uid}` (admin)
 
-Request:
+`role` is optional (section 1.7): `{}`, or the member's current role, returns the member unchanged after the permission checks below. Request:
 
 ```json
 { "role": "admin" }
@@ -520,22 +539,23 @@ Request:
 
 `200`: the updated `Member`.
 
-Errors:
-- `403 own_role`.
-- `403 protected_member` (admin acting on an owner/admin, or granting admin/owner).
-- `409 last_owner` (demoting the only owner).
+Errors, in the order they are checked:
+- `404` (workspace), then `403 insufficient_role` (member or viewer, even for themselves).
+- `422` for an invalid body (`"role": null` included).
+- `403 own_role` when `uid` is the caller.
 - `404` when `uid` is not a member.
-- `422`.
+- `403 protected_member`: an admin acting on an owner or admin (message `"Only owners can change or remove owners and admins"`), or granting `admin`/`owner`.
+- `409 last_owner` (demoting the only owner). Only reachable when two owners demote each other at the same time, because the caller of a role change is always another owner.
 
 #### `DELETE /workspaces/{wid}/members/{uid}` (admin; any member for themselves)
 
 `204`. `uid` equal to the caller's own id means "leave the workspace" and is allowed for any role.
 
 Errors:
-- `409 last_owner`.
-- `403 protected_member`.
-- `403` (a non-admin removing someone else).
-- `404`.
+- `404` (workspace, or `uid` not a member).
+- `403 insufficient_role` (a member or viewer removing someone else).
+- `403 protected_member` (an admin removing an owner or admin).
+- `409 last_owner`: the only owner leaving. Message: `"You are the only owner. Make another member an owner before leaving the workspace"`.
 
 ---
 

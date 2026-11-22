@@ -88,3 +88,31 @@ export type LoginRequest = Schemas['LoginRequest']
 
 /** The signed-in user (contract 2.1 `User`). */
 export type User = UserRead
+
+// ---------------------------------------------------------------------------------------------
+// Workspaces and members (contract 3.3, 3.4): generated
+// ---------------------------------------------------------------------------------------------
+
+/** Workspace role (contract 1.9), highest first. */
+export type Role = Schemas['Role']
+
+/** Backend `WorkspaceRead`: the contract's `Workspace`, with the caller's own role. */
+export type WorkspaceRead = Schemas['WorkspaceRead']
+
+/** Backend `WorkspaceCreate`: body of `POST /workspaces`. Omit `slug` to let the server derive it. */
+export type WorkspaceCreate = Schemas['WorkspaceCreate']
+
+/** Backend `WorkspaceUpdate`: body of `PATCH /workspaces/{wid}`. Only the name can change. */
+export type WorkspaceUpdate = Schemas['WorkspaceUpdate']
+
+/** Backend `MemberRead`: the contract's `Member`. */
+export type MemberRead = Schemas['MemberRead']
+
+/** Backend `MemberCreate`: body of `POST /workspaces/{wid}/members` (an existing user's email). */
+export type MemberCreate = Schemas['MemberCreate']
+
+/** Backend `MemberUpdate`: body of `PATCH /workspaces/{wid}/members/{uid}` (`{}` changes nothing). */
+export type MemberUpdate = Schemas['MemberUpdate']
+
+export type Workspace = WorkspaceRead
+export type Member = MemberRead

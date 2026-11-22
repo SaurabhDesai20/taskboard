@@ -1,41 +1,19 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { DEMO_USER, startMockSession } from '../mocks/db'
-import { server } from '../mocks/server'
 import { renderRoute } from '../test/render'
 
 describe('app shell (signed in)', () => {
   beforeEach(() => startMockSession(DEMO_USER.id))
 
-  it('renders the header and the API status from /api/health', async () => {
+  it('renders the header (brand, workspace switcher, user menu) and the home page', async () => {
     renderRoute({ route: '/' })
 
     expect(screen.getByRole('link', { name: 'TaskBoard' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'Welcome to TaskBoard' })).toBeInTheDocument()
-    expect(await screen.findByText('API ok, database ok')).toBeInTheDocument()
-  })
-
-  it('reports the API as unavailable when the health check fails', async () => {
-    server.use(
-      http.get('/api/health', () =>
-        HttpResponse.json(
-          {
-            error: {
-              code: 'service_unavailable',
-              message: 'Database is unavailable',
-              details: {},
-            },
-          },
-          { status: 503 },
-        ),
-      ),
-    )
-
-    renderRoute({ route: '/' })
-
-    expect(await screen.findByText('API unavailable')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your workspaces' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Workspaces' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: DEMO_USER.name })).toBeInTheDocument()
   })
 
   it('shows a not-found page for unknown routes', async () => {

@@ -4,6 +4,8 @@
 import { resetMockDb } from './db'
 import { authHandlers } from './handlers/auth'
 import { healthHandlers } from './handlers/health'
+import { memberHandlers } from './handlers/members'
+import { workspaceHandlers } from './handlers/workspaces'
 import { csrfGuard } from './http'
 
 export const handlers = [
@@ -11,6 +13,8 @@ export const handlers = [
   csrfGuard,
   ...healthHandlers,
   ...authHandlers,
+  ...workspaceHandlers,
+  ...memberHandlers,
 ]
 
 /** Back to the seeded data and no session. Tests call it after each test (src/test/setup.ts). */

@@ -53,3 +53,36 @@ Run-wide decisions:
 **Open issues**
 - The dev database has not been migrated. Run `.\scripts\migrate.ps1`.
 - With mocks on in the browser, a reload loses the mock session. Mocks are now off in dev.
+
+## Phase 2: Workspaces, Members, Roles
+
+**Built**
+- Backend:
+  - `workspaces` and `workspace_members` models and migration. The role column is VARCHAR with a CHECK constraint; deleting a workspace cascades to its members.
+  - `services/permissions.py`: one data table over the 10 shared action ids, plus `can()`.
+  - A shared access helper: 404 for a missing workspace or a non-member, 403 `insufficient_role` for a role that is too low.
+  - Workspace CRUD with slug derivation and `-2` suffixes.
+  - Members: add, change role, remove and leave, with every owner/admin rule. Owner rows are locked while checking the last-owner rule.
+- UI:
+  - `lib/permissions.ts` (the same table) with member-rule helpers, `<Can>` / `useCan`, `RoleBadge`, and a reusable accessible `Modal` and `ConfirmDialog`.
+  - Workspace and member hooks.
+  - Pages: `/` (workspace list), `/w/:slug` (overview), `/w/:slug/settings` (rename/delete, members table, add by email, role dropdowns, remove/leave).
+  - A header workspace switcher and a create-workspace modal.
+  - MSW handlers for all Phase 2 endpoints, seeded with one user per role.
+- Sync Point:
+  - `schema.d.ts` regenerated. `Role`, `WorkspaceRead/Create/Update` and `MemberRead/Create/Update` are now aliases of the generated types.
+  - The permission matrix was compared programmatically, backend `PERMISSIONS` against UI `PERMISSIONS`: all 10 actions × 4 roles match.
+
+**Tested**
+- `lint.ps1` is clean.
+- `test.ps1`: 395 backend tests (including the full role × action matrix and every endpoint × role) and 247 frontend tests pass.
+- Live smoke check through the Vite proxy: 36/36. It covers create (derived slug), slug conflict, add, duplicate and unknown member, member/viewer 403s, outsider 404s, promote, `protected_member`, `own_role`, `last_owner`, role ordering, leave, and delete.
+
+**Decisions**
+- `require_role` takes an **action id** (`require_role("member.manage")`) instead of a minimum role. The gate still decides through `can()`. PLAN.md and CLAUDE.md still say `require_role(min_role)`, which is now out of date.
+- The `/` page lists workspaces. The Phase 0 health status page was removed.
+- No new libraries.
+
+**Open issues**
+- After removing a member, keyboard focus falls back to the page body.
+- The "You left / workspace deleted" notice lives in router state, so it reappears after a browser reload.

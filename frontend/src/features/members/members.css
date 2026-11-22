@@ -1,0 +1,57 @@
+/* Members table on the workspace settings page */
+
+.add-member {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.members {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.members th,
+.members td {
+  padding: 0.625rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.members thead th {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.members tbody th {
+  font-weight: 500;
+}
+
+.members__you {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.members__email {
+  overflow-wrap: anywhere;
+}
+
+.members__role {
+  padding: 0.25rem 0.5rem;
+}
+
+.members__actions {
+  text-align: right;
+}
+
+.members__actions .field__hint {
+  max-width: 14rem;
+  margin-top: 0.25rem;
+  margin-left: auto;
+}

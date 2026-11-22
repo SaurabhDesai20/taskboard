@@ -24,17 +24,17 @@ describe('RegisterPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Create an account' })).toBeInTheDocument()
     await fillRegister(user, {
-      name: '  Ben Okafor ',
-      email: 'Ben@Example.com',
+      name: '  Nia Patel ',
+      email: 'Nia@Example.com',
       password: 'correct-horse-battery',
     })
     await submit(user)
 
-    expect(await screen.findByRole('heading', { name: 'Welcome to TaskBoard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your workspaces' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
     // Name trimmed before sending; email stored lowercase by the server.
-    expect(screen.getByRole('button', { name: 'Ben Okafor' })).toBeInTheDocument()
-    expect(findUserByEmail('ben@example.com')?.name).toBe('Ben Okafor')
+    expect(screen.getByRole('button', { name: 'Nia Patel' })).toBeInTheDocument()
+    expect(findUserByEmail('nia@example.com')?.name).toBe('Nia Patel')
   })
 
   it('shows validation errors for every invalid field and sends nothing', async () => {
@@ -67,7 +67,7 @@ describe('RegisterPage', () => {
     await user.click(await screen.findByLabelText('Name'))
     await user.paste('n'.repeat(101))
     await user.click(screen.getByLabelText('Email'))
-    await user.paste('ben@example.com')
+    await user.paste('nia@example.com')
     await user.click(screen.getByLabelText('Password'))
     await user.paste('p'.repeat(129))
     await submit(user)
@@ -118,8 +118,8 @@ describe('RegisterPage', () => {
     renderRoute({ route: '/register' })
 
     await fillRegister(user, {
-      name: 'Ben',
-      email: 'ben@example.com',
+      name: 'Nia',
+      email: 'nia@example.com',
       password: 'password1',
     })
     await submit(user)

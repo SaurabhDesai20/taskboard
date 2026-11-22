@@ -21,7 +21,7 @@ describe('LoginPage', () => {
     await fillLogin(user, DEMO_USER.email, DEMO_USER.password)
     await user.click(screen.getByRole('button', { name: 'Log in' }))
 
-    expect(await screen.findByRole('heading', { name: 'Welcome to TaskBoard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your workspaces' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
     expect(screen.getByRole('button', { name: DEMO_USER.name })).toBeInTheDocument()
   })
@@ -134,7 +134,7 @@ describe('LoginPage', () => {
 
     expect(await screen.findByRole('button', { name: 'Logging in...' })).toBeDisabled()
     release()
-    expect(await screen.findByRole('heading', { name: 'Welcome to TaskBoard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your workspaces' })).toBeInTheDocument()
   })
 
   it('links to the register page', async () => {
@@ -150,7 +150,7 @@ describe('LoginPage', () => {
     startMockSession(DEMO_USER.id)
     const { router } = renderRoute({ route: '/login' })
 
-    expect(await screen.findByRole('heading', { name: 'Welcome to TaskBoard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Your workspaces' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
 })

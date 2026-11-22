@@ -21,8 +21,8 @@ const asha = { email: DEMO_USER.email, password: DEMO_USER.password }
 describe('auth mock handlers', () => {
   it('registers a user: 201, lowercase trimmed email, no password, session started', async () => {
     const response = await post('/auth/register', {
-      email: '  Ben@Example.COM ',
-      name: ' Ben Okafor ',
+      email: '  Nia@Example.COM ',
+      name: ' Nia Patel ',
       password: 'correct-horse-battery',
     })
 
@@ -30,11 +30,11 @@ describe('auth mock handlers', () => {
     const user: unknown = await response.json()
     expect(user).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      email: 'ben@example.com',
-      name: 'Ben Okafor',
+      email: 'nia@example.com',
+      name: 'Nia Patel',
       created_at: expect.stringMatching(/Z$/),
     })
-    expect(sessionUser()?.email).toBe('ben@example.com')
+    expect(sessionUser()?.email).toBe('nia@example.com')
     expect(await (await call('/auth/me')).json()).toEqual(user)
   })
 
@@ -112,16 +112,16 @@ describe('auth mock handlers', () => {
 
   it('uses passwords exactly as sent and answers a too-short login password with 401', async () => {
     await post('/auth/register', {
-      email: 'ben@example.com',
-      name: 'Ben',
+      email: 'nia@example.com',
+      name: 'Nia',
       password: ' spaced password ',
     })
 
-    expect((await post('/auth/login', { email: 'ben@example.com', password: 'spaced password' })).status).toBe(401)
-    expect((await post('/auth/login', { email: 'ben@example.com', password: 'short' })).status).toBe(401)
-    expect((await post('/auth/login', { email: 'ben@example.com', password: '' })).status).toBe(422)
+    expect((await post('/auth/login', { email: 'nia@example.com', password: 'spaced password' })).status).toBe(401)
+    expect((await post('/auth/login', { email: 'nia@example.com', password: 'short' })).status).toBe(401)
+    expect((await post('/auth/login', { email: 'nia@example.com', password: '' })).status).toBe(422)
     expect(
-      (await post('/auth/login', { email: 'ben@example.com', password: ' spaced password ' })).status,
+      (await post('/auth/login', { email: 'nia@example.com', password: ' spaced password ' })).status,
     ).toBe(200)
   })
 

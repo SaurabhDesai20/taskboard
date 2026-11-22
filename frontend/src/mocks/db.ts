@@ -1,35 +1,114 @@
 // In-memory data behind the MSW handlers. Module-level, so it lasts until a page reload in the
 // browser; tests call resetMockDb() (via resetMockState) after each test.
-import type { User } from '../api/types'
+//
+// Seed (every user signs in with the password `correct-horse-battery`):
+//
+// | User | Acme (`acme`) | Globex (`globex`) |
+// |---|---|---|
+// | Asha Rao (DEMO_USER) | owner | member |
+// | Dana Kim | admin | - |
+// | Ben Okafor | member | owner |
+// | Chen Wei | viewer | - |
+// | Eve Santos | - | - |
+import type { Role, User, UUID, Workspace } from '../api/types'
+import { ROLES } from '../lib/permissions'
 
 export interface MockUserRecord extends User {
   /** Plain text: this is a mock. The real backend stores a hash. */
   password: string
 }
 
+export interface MockWorkspaceRecord {
+  id: UUID
+  name: string
+  slug: string
+  created_by: UUID
+  created_at: string
+}
+
+export interface MockMembershipRecord {
+  workspace_id: UUID
+  user_id: UUID
+  role: Role
+  joined_at: string
+}
+
+const PASSWORD = 'correct-horse-battery'
+
+function seedUser(n: number, email: string, name: string): Readonly<MockUserRecord> {
+  return {
+    id: `10000000-0000-4000-8000-00000000000${n}`,
+    email,
+    name,
+    password: PASSWORD,
+    created_at: '2026-11-22T09:00:00Z',
+  }
+}
+
+/** Seeded accounts; the contract's example users plus an admin and a user with no workspace. */
+export const MOCK_USERS = {
+  asha: seedUser(1, 'asha@example.com', 'Asha Rao'),
+  ben: seedUser(2, 'ben@example.com', 'Ben Okafor'),
+  chen: seedUser(3, 'chen@example.com', 'Chen Wei'),
+  dana: seedUser(4, 'dana@example.com', 'Dana Kim'),
+  eve: seedUser(5, 'eve@example.com', 'Eve Santos'),
+} as const
+
 /** Seeded account, matching the contract's example user (sign in with it in mock mode). */
-export const DEMO_USER: Readonly<MockUserRecord> = {
-  id: '10000000-0000-4000-8000-000000000001',
-  email: 'asha@example.com',
-  name: 'Asha Rao',
-  password: 'correct-horse-battery',
-  created_at: '2026-11-22T09:00:00Z',
+export const DEMO_USER: Readonly<MockUserRecord> = MOCK_USERS.asha
+
+export const MOCK_WORKSPACES = {
+  acme: {
+    id: '20000000-0000-4000-8000-000000000001',
+    name: 'Acme',
+    slug: 'acme',
+    created_by: MOCK_USERS.asha.id,
+    created_at: '2026-11-22T09:05:00Z',
+  },
+  globex: {
+    id: '20000000-0000-4000-8000-000000000002',
+    name: 'Globex',
+    slug: 'globex',
+    created_by: MOCK_USERS.ben.id,
+    created_at: '2026-11-22T09:06:00Z',
+  },
+} as const satisfies Record<string, MockWorkspaceRecord>
+
+function seedMembers(): MockMembershipRecord[] {
+  const { acme, globex } = MOCK_WORKSPACES
+  const { asha, ben, chen, dana } = MOCK_USERS
+  return [
+    { workspace_id: acme.id, user_id: asha.id, role: 'owner', joined_at: '2026-11-22T09:05:00Z' },
+    { workspace_id: acme.id, user_id: dana.id, role: 'admin', joined_at: '2026-11-22T09:07:00Z' },
+    { workspace_id: acme.id, user_id: ben.id, role: 'member', joined_at: '2026-11-22T09:10:00Z' },
+    { workspace_id: acme.id, user_id: chen.id, role: 'viewer', joined_at: '2026-11-22T09:12:00Z' },
+    { workspace_id: globex.id, user_id: ben.id, role: 'owner', joined_at: '2026-11-22T09:06:00Z' },
+    { workspace_id: globex.id, user_id: asha.id, role: 'member', joined_at: '2026-11-22T09:08:00Z' },
+  ]
 }
 
 interface MockDb {
   users: MockUserRecord[]
+  workspaces: MockWorkspaceRecord[]
+  members: MockMembershipRecord[]
   /** Stands in for the httpOnly session cookie: the id of the signed-in user, or null. */
   sessionUserId: string | null
 }
 
-export const db: MockDb = { users: [], sessionUserId: null }
+export const db: MockDb = { users: [], workspaces: [], members: [], sessionUserId: null }
 
 export function resetMockDb(): void {
-  db.users = [{ ...DEMO_USER }]
+  db.users = Object.values(MOCK_USERS).map((user) => ({ ...user }))
+  db.workspaces = Object.values(MOCK_WORKSPACES).map((workspace) => ({ ...workspace }))
+  db.members = seedMembers()
   db.sessionUserId = null
 }
 
 resetMockDb()
+
+// ---------------------------------------------------------------------------------------------
+// Users and session
+// ---------------------------------------------------------------------------------------------
 
 export function toUser({ id, email, name, created_at }: MockUserRecord): User {
   return { id, email, name, created_at }
@@ -64,4 +143,67 @@ export function startMockSession(userId: string = DEMO_USER.id): void {
 /** Sign out, or simulate an expired cookie. */
 export function endMockSession(): void {
   db.sessionUserId = null
+}
+
+// ---------------------------------------------------------------------------------------------
+// Workspaces and memberships
+// ---------------------------------------------------------------------------------------------
+
+export function findWorkspace(id: UUID): MockWorkspaceRecord | undefined {
+  return db.workspaces.find((workspace) => workspace.id === id)
+}
+
+export function findWorkspaceBySlug(slug: string): MockWorkspaceRecord | undefined {
+  return db.workspaces.find((workspace) => workspace.slug === slug)
+}
+
+export function findMembership(workspaceId: UUID, userId: UUID): MockMembershipRecord | undefined {
+  return db.members.find((member) => member.workspace_id === workspaceId && member.user_id === userId)
+}
+
+export function membershipsOf(workspaceId: UUID): MockMembershipRecord[] {
+  return db.members.filter((member) => member.workspace_id === workspaceId)
+}
+
+export function toWorkspace(workspace: MockWorkspaceRecord, myRole: Role): Workspace {
+  return { ...workspace, my_role: myRole }
+}
+
+export function createWorkspace(fields: { name: string; slug: string }, ownerId: UUID): MockWorkspaceRecord {
+  const now = new Date().toISOString()
+  const workspace: MockWorkspaceRecord = {
+    id: crypto.randomUUID(),
+    name: fields.name,
+    slug: fields.slug,
+    created_by: ownerId,
+    created_at: now,
+  }
+  db.workspaces.push(workspace)
+  db.members.push({ workspace_id: workspace.id, user_id: ownerId, role: 'owner', joined_at: now })
+  return workspace
+}
+
+export function deleteWorkspace(id: UUID): void {
+  db.workspaces = db.workspaces.filter((workspace) => workspace.id !== id)
+  db.members = db.members.filter((member) => member.workspace_id !== id)
+}
+
+export function removeMembership(workspaceId: UUID, userId: UUID): void {
+  db.members = db.members.filter(
+    (member) => !(member.workspace_id === workspaceId && member.user_id === userId),
+  )
+}
+
+/** Test helper: put `userId` into `workspaceId` with `role` (or change their role). */
+export function setMockMembership(workspaceId: UUID, userId: UUID, role: Role): void {
+  const existing = findMembership(workspaceId, userId)
+  if (existing) {
+    existing.role = role
+  } else {
+    db.members.push({ workspace_id: workspaceId, user_id: userId, role, joined_at: new Date().toISOString() })
+  }
+}
+
+export function roleRank(role: Role): number {
+  return ROLES.indexOf(role)
 }

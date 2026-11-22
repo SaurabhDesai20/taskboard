@@ -1,8 +1,16 @@
 // Helpers that make MSW handlers answer exactly like the backend (contract section 1).
 import { http, HttpResponse } from 'msw'
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../api/client'
-import type { ApiErrorCode, ApiErrorEnvelope, ApiErrorReason, FieldError } from '../api/types'
-import { sessionUser, type MockUserRecord } from './db'
+import type { ApiErrorCode, ApiErrorEnvelope, ApiErrorReason, FieldError, Role } from '../api/types'
+import { ROLES } from '../lib/permissions'
+import {
+  findMembership,
+  findWorkspace,
+  sessionUser,
+  type MockMembershipRecord,
+  type MockUserRecord,
+  type MockWorkspaceRecord,
+} from './db'
 
 export const API = '/api'
 
@@ -59,6 +67,63 @@ export const csrfGuard = http.all(`${API}/*`, ({ request }) => {
 /** The signed-in user, or a 401 response to return as is. */
 export function requireUser(): MockUserRecord | Response {
   return sessionUser() ?? unauthorizedResponse()
+}
+
+/** Case-insensitive ordering, like the backend's `ORDER BY lower(name)`. */
+export function compareText(a: string, b: string): number {
+  const left = a.toLowerCase()
+  const right = b.toLowerCase()
+  if (left === right) return 0
+  return left < right ? -1 : 1
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** A 422 for path parameters that are not UUIDs (FastAPI validates them before anything else). */
+export function invalidUuidParams(params: Record<string, string | readonly string[] | undefined>) {
+  const errors: FieldError[] = []
+  for (const [field, value] of Object.entries(params)) {
+    if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+      errors.push({ field, location: 'path', message: 'Input should be a valid UUID' })
+    }
+  }
+  return errors.length > 0 ? validationErrorResponse(errors) : null
+}
+
+export interface WorkspaceAccess {
+  user: MockUserRecord
+  workspace: MockWorkspaceRecord
+  membership: MockMembershipRecord
+}
+
+/**
+ * Contract 1.10, steps 1 and 2: the signed-in user and their membership of workspace `wid`.
+ * 401 when logged out, 422 for a malformed id, 404 when the workspace does not exist **or** the
+ * user is not a member (never 403, so existence does not leak).
+ */
+export function requireWorkspaceMember(wid: string | readonly string[] | undefined): WorkspaceAccess | Response {
+  const invalid = invalidUuidParams({ wid })
+  if (invalid) return invalid
+  const user = requireUser()
+  if (user instanceof Response) return user
+  const workspace = findWorkspace(wid as string)
+  const membership = workspace ? findMembership(workspace.id, user.id) : undefined
+  if (!workspace || !membership) return errorResponse('not_found', 'Workspace not found')
+  return { user, workspace, membership }
+}
+
+/** Reads a required `role` body field. Returns the role, or the 422 entry to report. */
+export function readRole(body: Record<string, unknown>): Role | FieldError {
+  const value = body.role
+  if (value === undefined) return { field: 'role', location: 'body', message: 'Field required' }
+  if (typeof value !== 'string' || !(ROLES as readonly string[]).includes(value)) {
+    return {
+      field: 'role',
+      location: 'body',
+      message: "Input should be 'owner', 'admin', 'member' or 'viewer'",
+    }
+  }
+  return value as Role
 }
 
 type JsonObject = Record<string, unknown>
