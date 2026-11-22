@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { useParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import type { Project, ProjectCreate, ProjectUpdate, UUID } from '../../api/types'
-import { refreshAfterConflict, useCurrentWorkspace, workspaceKeys } from '../workspaces/hooks'
+import { refreshActivity, refreshAfterConflict, useCurrentWorkspace, workspaceKeys } from '../workspaces/hooks'
 import { projectsApi } from './api'
 
 export const projectKeys = {
@@ -25,7 +25,7 @@ function sortByName(projects: Project[]): Project[] {
 
 /**
  * Puts a created or changed project into the cached detail and lists (dropping it from the
- * active-only list once archived), then refetches the lists to be sure.
+ * active-only list once archived), then refetches the lists to be sure, and the activity feed.
  */
 function storeProject(queryClient: QueryClient, project: Project): void {
   const workspaceId = project.workspace_id
@@ -39,6 +39,7 @@ function storeProject(queryClient: QueryClient, project: Project): void {
     })
   }
   void queryClient.invalidateQueries({ queryKey: projectKeys.lists(workspaceId) })
+  refreshActivity(queryClient, workspaceId)
 }
 
 /** A project of this workspace from a cached list, with when that list was fetched. */

@@ -16,6 +16,7 @@ import {
   findWorkspace,
   tasksOf,
   toTask,
+  userRef,
   type MockMembershipRecord,
   type MockProjectRecord,
   type MockTaskRecord,
@@ -31,6 +32,7 @@ import {
   validateStrings,
   validationErrorResponse,
 } from '../http'
+import { logTaskActivity } from './activity'
 
 // Wording from contract 3.6.
 const MESSAGES = {
@@ -302,6 +304,39 @@ const touch = (task: MockTaskRecord) => {
   task.updated_at = new Date().toISOString()
 }
 
+/** Fields of `task.updated`; status, assignee and due date have their own actions (contract 3.8). */
+const UPDATED_FIELDS = ['title', 'description', 'priority'] as const
+
+/**
+ * The activity entries of a PATCH, in the contract's order: `task.updated` (title, description,
+ * priority; description named only), then `task.assigned`, `task.due_date_changed` and
+ * `task.moved`. Each holds the task's snapshot after the change.
+ */
+function recordTaskChanges(old: MockTaskRecord, task: MockTaskRecord, actorId: UUID): void {
+  const changed = UPDATED_FIELDS.filter((field) => old[field] !== task[field])
+  if (changed.length > 0) {
+    const values = (record: MockTaskRecord) =>
+      Object.fromEntries(changed.filter((field) => field !== 'description').map((field) => [field, record[field]]))
+    logTaskActivity(task, actorId, 'task.updated', { changed_fields: changed, before: values(old), after: values(task) })
+  }
+  if (old.assignee_id !== task.assignee_id) {
+    const ref = (id: UUID | null) => (id ? userRef(id) : null)
+    logTaskActivity(task, actorId, 'task.assigned', {
+      before: { assignee: ref(old.assignee_id) },
+      after: { assignee: ref(task.assignee_id) },
+    })
+  }
+  if (old.due_date !== task.due_date) {
+    logTaskActivity(task, actorId, 'task.due_date_changed', {
+      before: { due_date: old.due_date },
+      after: { due_date: task.due_date },
+    })
+  }
+  if (old.status !== task.status) {
+    logTaskActivity(task, actorId, 'task.moved', { before: { status: old.status }, after: { status: task.status } })
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------------------------
@@ -355,6 +390,7 @@ export const taskHandlers = [
       due_date: dueDate ?? null,
       created_by: membership.user_id,
     })
+    logTaskActivity(task, membership.user_id, 'task.created', { status: task.status })
     return HttpResponse.json<Task>(toTask(task), { status: 201 })
   }),
 
@@ -398,7 +434,10 @@ export const taskHandlers = [
       task.position = endOfColumn(project.id, status, task.id)
       task.status = status
     }
-    if (JSON.stringify(task) !== before) touch(task)
+    if (JSON.stringify(task) !== before) {
+      touch(task)
+      recordTaskChanges(JSON.parse(before) as MockTaskRecord, task, membership.user_id)
+    }
     return HttpResponse.json<Task>(toTask(task))
   }),
 
@@ -408,7 +447,8 @@ export const taskHandlers = [
     if (!can(access.membership.role, 'task.delete')) {
       return reasonError('forbidden', 'insufficient_role', MESSAGES.deleteRole)
     }
-    // Allowed in archived projects too (contract 1.10).
+    // Allowed in archived projects too (contract 1.10). The entry stays after the task is gone.
+    logTaskActivity(access.task, access.membership.user_id, 'task.deleted')
     deleteTask(access.task.id)
     return new HttpResponse(null, { status: 204 })
   }),
@@ -443,9 +483,21 @@ export const taskHandlers = [
     }
     if (errors.length > 0) return validationErrorResponse(errors)
 
+    const previousStatus = task.status
+    const orderOf = () => columnOf(project.id, status).map((item) => item.id).join(',')
+    const previousOrder = previousStatus === status ? orderOf() : null
     placeInColumn(task, column, after, before)
     task.status = status
+    // A move that leaves the task in the same place changes nothing and writes no entry (contract 3.8).
+    if (previousOrder !== null && orderOf() === previousOrder) {
+      return HttpResponse.json<Task>(toTask(task))
+    }
     touch(task)
+    // Also within one column (a reorder): before.status equals after.status (contract 3.8).
+    logTaskActivity(task, membership.user_id, 'task.moved', {
+      before: { status: previousStatus },
+      after: { status },
+    })
     return HttpResponse.json<Task>(toTask(task))
   }),
 

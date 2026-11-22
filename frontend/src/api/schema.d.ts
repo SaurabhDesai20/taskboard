@@ -322,10 +322,87 @@ export interface paths {
         patch: operations["update_comment_api_comments__cid__patch"];
         trace?: never;
     };
+    "/api/workspaces/{wid}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Activity */
+        get: operations["list_activity_api_workspaces__wid__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityAction
+         * @description What happened. The part before the dot is the entity type.
+         * @enum {string}
+         */
+        ActivityAction: "workspace.created" | "workspace.renamed" | "member.added" | "member.removed" | "member.role_changed" | "project.created" | "project.updated" | "project.archived" | "task.created" | "task.updated" | "task.moved" | "task.assigned" | "task.due_date_changed" | "task.deleted" | "comment.created" | "comment.edited" | "comment.deleted";
+        /**
+         * ActivityEntityType
+         * @description The kind of thing an entry is about (its `entity_id` names which one).
+         * @enum {string}
+         */
+        ActivityEntityType: "workspace" | "member" | "project" | "task" | "comment";
+        /**
+         * ActivityPage
+         * @description One page of a workspace's activity, newest first. `next_cursor` is null on the last
+         *     page.
+         */
+        ActivityPage: {
+            /** Items */
+            items: components["schemas"]["ActivityRead"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * ActivityRead
+         * @description The contract's `ActivityEntry`.
+         */
+        ActivityRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Task Id */
+            task_id: string | null;
+            actor: components["schemas"]["UserRef"];
+            action: components["schemas"]["ActivityAction"];
+            entity_type: components["schemas"]["ActivityEntityType"];
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** CommentCreate */
         CommentCreate: {
             /** Body */
@@ -2476,6 +2553,67 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_activity_api_workspaces__wid__activity_get: {
+        parameters: {
+            query?: {
+                /** @description Only entries about this project */
+                project_id?: string | null;
+                /** @description Only entries about this task */
+                task_id?: string | null;
+                /** @description Only entries by this user */
+                actor_id?: string | null;
+                /** @description Page size */
+                limit?: number;
+                /** @description The previous page's `next_cursor`; omit for the first page */
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                /** @description Workspace id */
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

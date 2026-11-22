@@ -1,4 +1,5 @@
 import type { RouteObject } from 'react-router'
+import { WorkspaceActivityPage } from '../features/activity/WorkspaceActivityPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RegisterPage } from '../features/auth/RegisterPage'
 import { RequireAuth, RequireGuest } from '../features/auth/RouteGuards'
@@ -43,6 +44,8 @@ export const routes: RouteObject[] = [
                 element: <WorkspaceLayout />,
                 children: [
                   { index: true, element: <WorkspaceHomePage /> },
+                  // The workspace's activity log; takes ?project and ?actor filters.
+                  { path: 'activity', element: <WorkspaceActivityPage /> },
                   { path: 'settings', element: <WorkspaceSettingsPage /> },
                 ],
               },

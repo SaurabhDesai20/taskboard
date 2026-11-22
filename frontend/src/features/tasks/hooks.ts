@@ -4,7 +4,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import type { Project, Task, TaskCreate, TaskMoveRequest, TaskStatus, TaskUpdate, UUID } from '../../api/types'
-import { refreshAfterConflict, workspaceKeys } from '../workspaces/hooks'
+import { refreshActivity, refreshAfterConflict, workspaceKeys } from '../workspaces/hooks'
 import { tasksApi } from './api'
 import { hasActiveFilters, type TaskFilters } from './filters'
 import { applyMove, sortTasks } from './ordering'
@@ -24,10 +24,14 @@ export const taskKeys = {
 /** My Tasks lists open work only: done tasks are not "to do". */
 export const OPEN_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'in_review']
 
-/** Refetch what a task change can affect: the project's lists (other positions) and My Tasks. */
+/**
+ * Refetch what a successful task change can affect: the project's lists (other positions), My
+ * Tasks, and the activity feed that now records it.
+ */
 function refreshTaskLists(queryClient: QueryClient, task: Pick<Task, 'workspace_id' | 'project_id'>): void {
   void queryClient.invalidateQueries({ queryKey: taskKeys.lists(task.workspace_id, task.project_id) })
   void queryClient.invalidateQueries({ queryKey: taskKeys.mine })
+  refreshActivity(queryClient, task.workspace_id)
 }
 
 /** Puts a changed task into the cached detail and into the project's lists that show it. */
@@ -182,7 +186,10 @@ export function useMoveTask(project: Project) {
       for (const [queryKey, list] of context?.snapshot ?? []) queryClient.setQueryData(queryKey, list)
       refreshAfterConflict(queryClient, project.workspace_id, error)
     },
-    onSuccess: (moved) => queryClient.setQueryData<Task>(taskKeys.detail(moved.workspace_id, moved.id), moved),
+    onSuccess: (moved) => {
+      queryClient.setQueryData<Task>(taskKeys.detail(moved.workspace_id, moved.id), moved)
+      refreshActivity(queryClient, moved.workspace_id)
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: listsKey })
       void queryClient.invalidateQueries({ queryKey: taskKeys.mine })

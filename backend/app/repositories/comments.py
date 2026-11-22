@@ -79,10 +79,16 @@ def lock(db: Session, comment: Comment) -> bool:
 
 
 def edit(db: Session, comment: Comment, body: str) -> None:
-    """Replace the body and set `edited_at` to the database's now(). The caller commits."""
+    """Replace the body and set `edited_at` to the database's now(). The caller commits.
+
+    Reads the new `edited_at` back before returning: the flush leaves an attribute set to a SQL
+    expression unloaded, and loading it after the commit could find the comment already deleted
+    by a concurrent request.
+    """
     comment.body = body
     comment.edited_at = func.now()
     db.flush()
+    db.refresh(comment, ["edited_at"])
 
 
 def delete_comment(db: Session, comment: Comment) -> bool:

@@ -5,8 +5,10 @@ one session. The concurrency tests use committed data and one connection per sim
 (see tests/concurrency.py); their fixture deletes what it committed.
 """
 
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -14,17 +16,26 @@ from sqlalchemy import Engine, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound
+from app.models.activity import ActivityAction, ActivityLog
 from app.models.comment import Comment
 from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.repositories import comments as comments_repo
 from app.repositories import projects as projects_repo
 from app.repositories import tasks as tasks_repo
 from app.schemas.comment import CommentCreate, CommentRead, CommentUpdate
 from app.services import comments as comments_service
+from app.services import tasks as tasks_service
 from app.services.access import comment_access, task_access
-from tests.concurrency import Background, backend_pid, new_session, wait_until_blocked
+from tests.concurrency import (
+    LOCK_WAIT_TIMEOUT,
+    Background,
+    backend_pid,
+    new_session,
+    wait_until_blocked,
+)
 from tests.factories import (
     create_comment,
     create_project,
@@ -180,3 +191,73 @@ def test_a_comment_waits_for_a_concurrent_task_delete_and_then_is_not_found(
         commenter.join()
     assert exc_info.value.message == "Task not found"
     assert stored_comments(committed) == 0
+
+
+@pytest.mark.parametrize(
+    ("write", "locked_step", "action"),
+    [
+        ("edit", "edit", ActivityAction.COMMENT_EDITED),
+        ("delete", "delete_comment", ActivityAction.COMMENT_DELETED),
+    ],
+)
+def test_a_task_delete_waits_for_a_comment_write_that_holds_its_locks(
+    committed: Committed,
+    monkeypatch: pytest.MonkeyPatch,
+    write: str,
+    locked_step: str,
+    action: ActivityAction,
+) -> None:
+    """A comment edit or delete has changed the comment (so it holds the comment's row lock)
+    and has yet to record its activity entry, which references the task. A task delete starting
+    now must wait for it: the comment write locked the task first. With the opposite lock order
+    the delete would lock the task, wait for the comment, and the entry's foreign key check
+    would wait for the task: a deadlock."""
+    with Session(committed.engine) as db:
+        task = db.get_one(Task, committed.task_id)
+        comment_id = create_comment(db, task, db.get_one(User, committed.user_id)).id
+        db.commit()
+
+    real_step = getattr(comments_repo, locked_step)
+    holding, release = threading.Event(), threading.Event()
+    writer_pid: list[int] = []
+
+    def step_then_hold(db: Session, *args: Any) -> Any:
+        result = real_step(db, *args)
+        writer_pid.append(backend_pid(db))
+        holding.set()
+        assert release.wait(LOCK_WAIT_TIMEOUT)
+        return result
+
+    monkeypatch.setattr(comments_repo, locked_step, step_then_hold)
+
+    def write_comment() -> None:
+        with new_session(committed.engine) as db:
+            access = comment_access(db, comment_id, committed.user_id, "comment.edit_own")
+            if write == "edit":
+                comments_service.update(db, access, CommentUpdate(body="Edited"))
+            else:
+                comments_service.delete(db, access)
+
+    def delete_task() -> None:
+        with new_session(committed.engine) as db:
+            access = task_access(db, committed.task_id, committed.user_id, "task.delete")
+            tasks_service.delete(db, access)
+
+    writer = Background(write_comment).start()
+    assert holding.wait(LOCK_WAIT_TIMEOUT), "the comment write never reached its locked step"
+    deleter = Background(delete_task).start()
+    wait_until_blocked(committed.engine, deleter, writer_pid[0])
+    release.set()
+
+    writer.join()
+    deleter.join()
+    with new_session(committed.engine) as db:
+        entries = db.execute(
+            select(ActivityLog.action, ActivityLog.task_id).where(
+                ActivityLog.entity_id.in_([comment_id, committed.task_id])
+            )
+        ).all()
+    # Both committed; the delete nulled the comment entry's task id.
+    assert sorted(tuple(entry) for entry in entries) == sorted(
+        [(action, None), (ActivityAction.TASK_DELETED, None)]
+    )

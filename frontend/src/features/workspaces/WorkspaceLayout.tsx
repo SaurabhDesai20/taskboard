@@ -49,7 +49,7 @@ export function WorkspaceRoute() {
   )
 }
 
-/** The workspace overview and settings pages: workspace header, my role and the tabs. */
+/** The workspace overview, activity and settings pages: workspace header, my role and the tabs. */
 export function WorkspaceLayout() {
   const { workspace } = useCurrentWorkspace()
   if (!workspace) return null
@@ -66,6 +66,9 @@ export function WorkspaceLayout() {
       <nav className="workspace__nav" aria-label="Workspace">
         <NavLink to={base} end className="workspace__tab">
           Overview
+        </NavLink>
+        <NavLink to={`${base}/activity`} className="workspace__tab">
+          Activity
         </NavLink>
         <NavLink to={`${base}/settings`} className="workspace__tab">
           Settings

@@ -8,7 +8,6 @@ from sqlalchemy import (
     Date,
     DateTime,
     Double,
-    Enum,
     ForeignKey,
     Index,
     String,
@@ -18,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import string_enum
 
 
 class TaskStatus(StrEnum):
@@ -36,20 +36,6 @@ class TaskPriority(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
-
-
-def _enum_type(enum: type[StrEnum], name: str) -> Enum:
-    """VARCHAR plus a CHECK constraint named `ck_tasks_<name>`, like the role column."""
-    return Enum(
-        enum,
-        name=name,
-        native_enum=False,
-        create_constraint=True,
-        length=16,
-        # Store the lowercase values ("in_progress"), not the member names ("IN_PROGRESS").
-        values_callable=lambda members: [member.value for member in members],
-        validate_strings=True,
-    )
 
 
 NUMBER_UNIQUE_CONSTRAINT = "uq_tasks_project_id_number"
@@ -77,8 +63,9 @@ class Task(Base):
     number: Mapped[int]
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(String(10000))
-    status: Mapped[TaskStatus] = mapped_column(_enum_type(TaskStatus, "status"))
-    priority: Mapped[TaskPriority] = mapped_column(_enum_type(TaskPriority, "priority"))
+    # VARCHAR plus CHECK constraints named ck_tasks_status / ck_tasks_priority.
+    status: Mapped[TaskStatus] = mapped_column(string_enum(TaskStatus, "status"))
+    priority: Mapped[TaskPriority] = mapped_column(string_enum(TaskPriority, "priority"))
     # Ascending order within the status column (docs/api-contract.md, POST /tasks/{tid}/move).
     position: Mapped[float] = mapped_column(Double())
     # Users are never deleted, so the assignee needs no ON DELETE rule.

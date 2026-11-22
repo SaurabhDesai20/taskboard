@@ -38,15 +38,25 @@
 // |---|---|
 // | WEB-1 | Ben (3 hours ago), Asha (2 hours ago, edited, two lines) |
 // | WEB-5 | Dana (2 days ago), Ben (yesterday), Asha (30 minutes ago) |
+//
+// Activity (contract 3.8): a history that matches the data above, from "3 days ago" (workspaces
+// created, members added, projects and tasks created) to "10 minutes ago". Acme has 25 entries,
+// so its feed has a second page at the default page size of 20; Globex has 6. The mutation
+// handlers append entries like the backend does (`recordActivity`).
 import type {
+  ActivityAction,
+  ActivityEntityType,
+  ActivityRead,
   CommentRead,
   DateOnly,
   Project,
+  ProjectRef,
   Role,
   Task,
   TaskPriority,
   TaskStatus,
   User,
+  UserRef,
   UUID,
   Workspace,
 } from '../api/types'
@@ -451,6 +461,141 @@ function seedComments(now: number): MockCommentRecord[] {
   ]
 }
 
+/** An activity entry as stored: the actor by id (the API embeds `{ id, name }`). */
+export interface MockActivityRecord {
+  id: UUID
+  workspace_id: UUID
+  project_id: UUID | null
+  task_id: UUID | null
+  actor_id: UUID
+  action: ActivityAction
+  entity_type: ActivityEntityType
+  entity_id: UUID
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+/** `TaskRef` (contract 3.8): a task as activity metadata snapshots it. */
+export interface MockTaskRef {
+  id: UUID
+  key: string
+  title: string
+}
+
+const activityId = (n: number) => `60000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+
+/** [minutes ago, actor, action, metadata, and for comment entries the comment id]. */
+type ActivitySeed = [number, MockUserRecord, ActivityAction, Record<string, unknown>, UUID?]
+
+function seedActivity(now: number): MockActivityRecord[] {
+  const { asha, ben, chen, dana } = MOCK_USERS
+  const { acme, globex } = MOCK_WORKSPACES
+  const { website, mobile, legacy, operations } = MOCK_PROJECTS
+  const ids = MOCK_TASK_IDS
+  const comments = MOCK_COMMENT_IDS
+  const user = (record: MockUserRecord): UserRef => ({ id: record.id, name: record.name })
+  const project = (record: MockProjectRecord): ProjectRef => ({ id: record.id, name: record.name, key: record.key })
+  const task = (id: UUID, key: string, title: string): MockTaskRef => ({ id, key, title })
+  const web1 = task(ids.web1, 'WEB-1', 'Fix login redirect')
+  const web5 = task(ids.web5, 'WEB-5', 'Review signup form')
+  const web7 = task(ids.web7, 'WEB-7', 'Accessibility audit')
+  const ops2 = task(ids.ops2, 'OPS-2', 'Update runbook')
+  const DAYS_3 = 3 * 24 * 60
+  let count = 0
+
+  /**
+   * Entries of a workspace (`projectRecord` null) or of a project. The entity follows from the
+   * metadata: a comment id, else `task`, else `user` (a member), else the project or workspace.
+   */
+  const entries = (workspaceId: UUID, projectRecord: MockProjectRecord | null, seeds: ActivitySeed[]) =>
+    seeds.map(([minutesAgo, actor, action, metadata, commentId]): MockActivityRecord => {
+      count += 1
+      const taskSnapshot = metadata.task as MockTaskRef | undefined
+      const member = metadata.user as UserRef | undefined
+      let entity: [ActivityEntityType, UUID] = projectRecord ? ['project', projectRecord.id] : ['workspace', workspaceId]
+      if (commentId) entity = ['comment', commentId]
+      else if (taskSnapshot) entity = ['task', taskSnapshot.id]
+      else if (member) entity = ['member', member.id]
+      return {
+        id: activityId(count),
+        workspace_id: workspaceId,
+        project_id: projectRecord?.id ?? null,
+        task_id: taskSnapshot?.id ?? null,
+        actor_id: actor.id,
+        action,
+        entity_type: entity[0],
+        entity_id: entity[1],
+        metadata,
+        created_at: new Date(now - minutesAgo * MINUTE_MS).toISOString(),
+      }
+    })
+  const web1Due = addDays(todayDateOnly(new Date(now)), 9)
+  const editedBody = 'Thanks! Can you check Safari too?\nIt may be the same cookie issue.'
+
+  return [
+    ...entries(acme.id, null, [
+      [DAYS_3, asha, 'workspace.created', { name: 'Acme' }],
+      [DAYS_3 - 2, asha, 'member.added', { user: user(dana), role: 'admin' }],
+      [DAYS_3 - 5, asha, 'member.added', { user: user(ben), role: 'member' }],
+      [DAYS_3 - 10, asha, 'member.added', { user: user(chen), role: 'member' }],
+      [DAYS_3 - 15, asha, 'member.role_changed', { user: user(chen), before: { role: 'member' }, after: { role: 'viewer' } }],
+    ]),
+    ...entries(acme.id, website, [[DAYS_3 - 20, asha, 'project.created', { project: project(website) }]]),
+    ...entries(acme.id, legacy, [[DAYS_3 - 25, asha, 'project.created', { project: project(legacy) }]]),
+    ...entries(acme.id, mobile, [
+      [DAYS_3 - 120, dana, 'project.created', { project: project(mobile) }],
+      [4000, dana, 'task.created', { task: task(ids.app1, 'APP-1', 'Push notifications'), status: 'todo' }],
+    ]),
+    ...entries(acme.id, website, [
+      [4100, asha, 'task.created', { task: web1, status: 'todo' }],
+      [4090, asha, 'task.created', { task: task(ids.web2, 'WEB-2', 'Write onboarding copy'), status: 'todo' }],
+      [4080, asha, 'task.created', { task: task(ids.web3, 'WEB-3', 'Design pricing page'), status: 'todo' }],
+      [3000, asha, 'task.assigned', { task: web1, before: { assignee: null }, after: { assignee: user(ben) } }],
+      [2990, asha, 'task.due_date_changed', { task: web1, before: { due_date: null }, after: { due_date: web1Due } }],
+      [
+        2 * 24 * 60,
+        dana,
+        'comment.created',
+        { task: web5, excerpt: 'The password rules only show up after the first error.' },
+        comments.web5Dana,
+      ],
+      [1500, ben, 'task.moved', { task: web1, before: { status: 'todo' }, after: { status: 'in_progress' } }],
+      [
+        24 * 60 + 30,
+        ben,
+        'comment.created',
+        { task: web5, excerpt: 'Agreed. I will move the hint above the field.' },
+        comments.web5Ben,
+      ],
+    ]),
+    ...entries(acme.id, legacy, [[24 * 60, asha, 'project.archived', { project: project(legacy) }]]),
+    ...entries(acme.id, website, [
+      [
+        600,
+        asha,
+        'task.updated',
+        { task: web5, changed_fields: ['priority'], before: { priority: 'high' }, after: { priority: 'urgent' } },
+      ],
+      [180, ben, 'comment.created', { task: web1, excerpt: 'Reproduced on Chrome and Firefox.' }, comments.web1Ben],
+      [120, asha, 'comment.created', { task: web1, excerpt: 'Thanks! Can you check Safari too?' }, comments.web1Asha],
+      [60, asha, 'comment.edited', { task: web1, excerpt: editedBody.slice(0, 140) }, comments.web1Asha],
+      [45, asha, 'task.moved', { task: web7, before: { status: 'in_progress' }, after: { status: 'in_progress' } }],
+      [30, asha, 'comment.created', { task: web5, excerpt: 'Looks good to me once the hint moves.' }, comments.web5Asha],
+      [10, asha, 'task.updated', { task: web7, changed_fields: ['description'], before: {}, after: {} }],
+    ]),
+    ...entries(globex.id, null, [
+      [DAYS_3 + 80, ben, 'workspace.created', { name: 'Globex' }],
+      [DAYS_3 + 70, ben, 'member.added', { user: user(asha), role: 'member' }],
+    ]),
+    ...entries(globex.id, operations, [
+      [DAYS_3 + 60, ben, 'project.created', { project: project(operations) }],
+      [DAYS_3 + 50, ben, 'task.created', { task: task(ids.ops1, 'OPS-1', 'Rotate API keys'), status: 'todo' }],
+      [DAYS_3 + 40, ben, 'task.created', { task: ops2, status: 'todo' }],
+      [4000, ben, 'task.moved', { task: ops2, before: { status: 'todo' }, after: { status: 'in_review' } }],
+    ]),
+  ]
+}
+
 interface MockDb {
   users: MockUserRecord[]
   workspaces: MockWorkspaceRecord[]
@@ -458,8 +603,11 @@ interface MockDb {
   projects: MockProjectRecord[]
   tasks: MockTaskRecord[]
   comments: MockCommentRecord[]
+  activity: MockActivityRecord[]
   /** The last comment time handed out (ms), so a new comment always sorts after older ones. */
   lastCommentAt: number
+  /** The last activity time handed out (ms), so the entries of one request keep their order. */
+  lastActivityAt: number
   /** The last task number used per project id (numbers are never reused). */
   taskNumbers: Record<UUID, number>
   /** Stands in for the httpOnly session cookie: the id of the signed-in user, or null. */
@@ -473,7 +621,9 @@ export const db: MockDb = {
   projects: [],
   tasks: [],
   comments: [],
+  activity: [],
   lastCommentAt: 0,
+  lastActivityAt: 0,
   taskNumbers: {},
   sessionUserId: null,
 }
@@ -484,8 +634,11 @@ export function resetMockDb(): void {
   db.members = seedMembers()
   db.projects = Object.values(MOCK_PROJECTS).map((project) => ({ ...project }))
   db.tasks = seedTasks()
-  db.comments = seedComments(Date.now())
+  const now = Date.now()
+  db.comments = seedComments(now)
+  db.activity = seedActivity(now)
   db.lastCommentAt = 0
+  db.lastActivityAt = 0
   db.taskNumbers = {}
   for (const task of db.tasks) {
     db.taskNumbers[task.project_id] = Math.max(db.taskNumbers[task.project_id] ?? 0, task.number)
@@ -578,6 +731,7 @@ export function deleteWorkspace(id: UUID): void {
   db.projects = db.projects.filter((project) => project.workspace_id !== id)
   db.tasks = db.tasks.filter((task) => task.workspace_id !== id)
   db.comments = db.comments.filter((comment) => comment.workspace_id !== id)
+  db.activity = db.activity.filter((entry) => entry.workspace_id !== id)
 }
 
 export function removeMembership(workspaceId: UUID, userId: UUID): void {
@@ -670,10 +824,16 @@ export function createTask(fields: NewTaskFields): MockTaskRecord {
   return task
 }
 
-/** Deletes the task and its comments (contract 3.6). */
+/**
+ * Deletes the task and its comments (contract 3.6). Its activity entries stay, no longer linked
+ * to it (`task_id` becomes null, contract 3.8).
+ */
 export function deleteTask(id: UUID): void {
   db.tasks = db.tasks.filter((task) => task.id !== id)
   db.comments = db.comments.filter((comment) => comment.task_id !== id)
+  for (const entry of db.activity) {
+    if (entry.task_id === id) entry.task_id = null
+  }
 }
 
 /** Test helper: the task keys of each column of a project, in position order. */
@@ -751,4 +911,60 @@ export function createComment(fields: {
 
 export function deleteComment(id: UUID): void {
   db.comments = db.comments.filter((comment) => comment.id !== id)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Activity (contract 3.8)
+// ---------------------------------------------------------------------------------------------
+
+/** A user as activity metadata snapshots them (`UserRef`). */
+export function userRef(userId: UUID): UserRef {
+  const user = db.users.find((candidate) => candidate.id === userId)
+  return { id: userId, name: user?.name ?? 'Unknown user' }
+}
+
+/** A task as activity metadata snapshots it (`TaskRef`), as it is now. */
+export function taskRef(task: MockTaskRecord): MockTaskRef {
+  return { id: task.id, key: toTask(task).key, title: task.title }
+}
+
+/** A project as activity metadata snapshots it (`ProjectRef`), as it is now. */
+export function projectRef(project: MockProjectRecord): ProjectRef {
+  return { id: project.id, name: project.name, key: project.key }
+}
+
+/** Server order (contract 3.8): newest first, then by id, descending. */
+export function compareActivity(a: MockActivityRecord, b: MockActivityRecord): number {
+  if (a.created_at !== b.created_at) return a.created_at > b.created_at ? -1 : 1
+  if (a.id === b.id) return 0
+  return a.id > b.id ? -1 : 1
+}
+
+/** A workspace's entries, newest first. */
+export function activityOf(workspaceId: UUID): MockActivityRecord[] {
+  return db.activity.filter((entry) => entry.workspace_id === workspaceId).sort(compareActivity)
+}
+
+/** The API shape: the actor as `{ id, name }` (current name, like the backend's join). */
+export function toActivity(record: MockActivityRecord): ActivityRead {
+  const { actor_id: actorId, ...fields } = record
+  return { ...fields, actor: userRef(actorId), metadata: structuredClone(record.metadata) }
+}
+
+/** Now, but always after the previous entry, so the entries of one request keep their order. */
+function nextActivityTimestamp(): string {
+  db.lastActivityAt = Math.max(Date.now(), db.lastActivityAt + 1)
+  return new Date(db.lastActivityAt).toISOString()
+}
+
+export type NewActivity = Omit<MockActivityRecord, 'id' | 'created_at'> & { createdAt?: string }
+
+/**
+ * Appends an activity entry. The mutation handlers call it after each change, like the backend's
+ * `ActivityService.record(...)`; tests use it to set up a feed (`createdAt` defaults to now).
+ */
+export function recordActivity({ createdAt, ...fields }: NewActivity): MockActivityRecord {
+  const entry: MockActivityRecord = { ...fields, id: crypto.randomUUID(), created_at: createdAt ?? nextActivityTimestamp() }
+  db.activity.push(entry)
+  return entry
 }

@@ -1,12 +1,14 @@
 // TanStack Query hooks for workspace members (contract 3.4). Every mutation refetches the member
-// list afterwards; on 403/404/409 the workspace list (my role) is refetched too, because those
-// usually mean someone else changed the membership in the meantime.
+// list (and the activity feed) afterwards; on 403/404/409 the workspace list (my role) is
+// refetched too, because those usually mean someone else changed the membership in the meantime.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { Member, MemberCreate, Role, UUID, Workspace } from '../../api/types'
-import { refreshAfterConflict, useLeaveWorkspacePage, workspaceKeys } from '../workspaces/hooks'
+import { refreshActivity, refreshAfterConflict, useLeaveWorkspacePage, workspaceKeys } from '../workspaces/hooks'
 import { membersApi } from './api'
 
+/** After a membership change: the member list, and the feed that now records the change. */
 function refetchMembers(queryClient: QueryClient, workspaceId: UUID): Promise<void> {
+  refreshActivity(queryClient, workspaceId)
   return queryClient.invalidateQueries({ queryKey: workspaceKeys.members(workspaceId) })
 }
 

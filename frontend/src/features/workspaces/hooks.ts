@@ -15,6 +15,16 @@ export const workspaceKeys = {
   /** Prefix of everything that belongs to one workspace (members now, projects later). */
   detail: (id: UUID) => ['workspaces', 'detail', id] as const,
   members: (id: UUID) => ['workspaces', 'detail', id, 'members'] as const,
+  /** Every activity feed of one workspace (the whole feed, filtered feeds, per-task tabs). */
+  activity: (id: UUID) => ['workspaces', 'detail', id, 'activity'] as const,
+}
+
+/**
+ * Every successful change writes activity entries (contract 3.8), so each mutation calls this to
+ * refetch the workspace's open feeds (closed ones are only marked stale).
+ */
+export function refreshActivity(queryClient: QueryClient, workspaceId: UUID): void {
+  void queryClient.invalidateQueries({ queryKey: workspaceKeys.activity(workspaceId) })
 }
 
 /** Same order as the server: by name. */
@@ -22,13 +32,14 @@ function sortByName(workspaces: Workspace[]): Workspace[] {
   return [...workspaces].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** Puts a created or updated workspace into the cached list, then refetches it to be sure. */
+/** Puts a created or renamed workspace into the cached list, then refetches it (and its activity). */
 function storeWorkspace(queryClient: QueryClient, workspace: Workspace): void {
   queryClient.setQueryData<Workspace[]>(workspaceKeys.list(), (list) =>
     list ? sortByName([...list.filter((item) => item.id !== workspace.id), workspace]) : list,
   )
   queryClient.setQueryData<Workspace>(workspaceKeys.detail(workspace.id), workspace)
   void queryClient.invalidateQueries({ queryKey: workspaceKeys.list() })
+  refreshActivity(queryClient, workspace.id)
 }
 
 /** Drops a workspace the user deleted or left, with everything cached under it. */

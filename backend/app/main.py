@@ -2,7 +2,16 @@
 
 from fastapi import FastAPI
 
-from app.api.routers import auth, comments, health, members, projects, tasks, workspaces
+from app.api.routers import (
+    activity,
+    auth,
+    comments,
+    health,
+    members,
+    projects,
+    tasks,
+    workspaces,
+)
 from app.core.config import Settings, get_settings
 from app.core.csrf import CSRFMiddleware
 from app.core.errors import register_exception_handlers
@@ -33,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(projects.router, prefix=API_PREFIX)
     app.include_router(tasks.router, prefix=API_PREFIX)
     app.include_router(comments.router, prefix=API_PREFIX)
+    app.include_router(activity.router, prefix=API_PREFIX)
 
     # Phase 7: serve frontend/dist with StaticFiles plus an SPA fallback that excludes /api.
     return app

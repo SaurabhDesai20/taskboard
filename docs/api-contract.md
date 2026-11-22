@@ -177,6 +177,8 @@ Strings are trimmed before validation, except `password`, which is used exactly 
 | `Role` | `owner`, `admin`, `member`, `viewer` | Owner, Admin, Member, Viewer |
 | `TaskStatus` | `todo`, `in_progress`, `in_review`, `done` | To Do, In Progress, In Review, Done |
 | `TaskPriority` | `low`, `medium`, `high`, `urgent` | Low, Medium, High, Urgent |
+| `ActivityAction` | `workspace.created`, `workspace.renamed`, `member.added`, `member.removed`, `member.role_changed`, `project.created`, `project.updated`, `project.archived`, `task.created`, `task.updated`, `task.moved`, `task.assigned`, `task.due_date_changed`, `task.deleted`, `comment.created`, `comment.edited`, `comment.deleted` | Messages per section 3.8 |
+| `ActivityEntityType` | `workspace`, `member`, `project`, `task`, `comment` (always the part of the action before the dot) | |
 
 ### 1.10 Access rules
 
@@ -284,10 +286,19 @@ interface Comment {
   created_at: Timestamp; edited_at: Timestamp | null
 }
 
+type ActivityAction =
+  | 'workspace.created' | 'workspace.renamed'
+  | 'member.added' | 'member.removed' | 'member.role_changed'
+  | 'project.created' | 'project.updated' | 'project.archived'
+  | 'task.created' | 'task.updated' | 'task.moved' | 'task.assigned'
+  | 'task.due_date_changed' | 'task.deleted'
+  | 'comment.created' | 'comment.edited' | 'comment.deleted'
+type ActivityEntityType = 'workspace' | 'member' | 'project' | 'task' | 'comment'
+
 interface ActivityEntry {
   id: UUID; workspace_id: UUID; project_id: UUID | null; task_id: UUID | null
   actor: UserRef; action: ActivityAction
-  entity_type: 'workspace' | 'member' | 'project' | 'task' | 'comment'
+  entity_type: ActivityEntityType
   entity_id: UUID
   metadata: Record<string, unknown> // shape per action, see section 3.8
   created_at: Timestamp
@@ -333,7 +344,7 @@ The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` w
 | update-task body | `TaskUpdate` | `PATCH /tasks/{tid}` | 4 |
 | move-task body | `TaskMoveRequest` | `POST /tasks/{tid}/move` | 4 |
 | `MyTask` | `MyTaskRead` | `200` of `GET /me/tasks` (array) | 4 |
-| `UserRef` | `UserRef` | `TaskRead.assignee`, `CommentRead.author` (later also activity actors) | 4 |
+| `UserRef` | `UserRef` | `TaskRead.assignee`, `CommentRead.author`, `ActivityRead.actor` | 4 |
 | `ProjectRef` | `ProjectRef` | `MyTaskRead.project` | 4 |
 | `WorkspaceRef` | `WorkspaceRef` | `MyTaskRead.workspace` | 4 |
 | `TaskStatus` | `TaskStatus` (string enum) | `TaskRead.status`, `TaskCreate.status`, `TaskUpdate.status`, `TaskMoveRequest.status`, the `status` query filter | 4 |
@@ -342,13 +353,17 @@ The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` w
 | `Page<Comment>` | `CommentPage` | `200` of `GET /tasks/{tid}/comments` | 5 |
 | create-comment body | `CommentCreate` | `POST /tasks/{tid}/comments` | 5 |
 | update-comment body | `CommentUpdate` | `PATCH /comments/{cid}` | 5 |
+| `ActivityEntry` | `ActivityRead` (`metadata` is a plain object, `additionalProperties: true`) | `ActivityPage.items` | 6 |
+| `Page<ActivityEntry>` | `ActivityPage` | `200` of `GET /workspaces/{wid}/activity` | 6 |
+| `ActivityAction` | `ActivityAction` (string enum) | `ActivityRead.action` | 6 |
+| `ActivityEntityType` | `ActivityEntityType` (string enum) | `ActivityRead.entity_type` | 6 |
 | `ErrorEnvelope` | `ErrorEnvelope` (its `error` is `ErrorBody`) | every documented error response, `422` included | 0 |
 | health response | `HealthRead` | `GET /health` | 0 |
 | session cookie | security scheme `CookieAuth` (`apiKey`, in `cookie`, name `access_token`) | every endpoint that requires the cookie | 1 |
 
 - Error responses (including `422`) are documented with `ErrorEnvelope`. FastAPI's default `HTTPValidationError` schema is not used, because the API never returns that shape.
 - Path parameters keep the names used in this document: `wid` (workspace id), `uid` (a member's user id), `pid` (project id), `tid` (task id) and `cid` (comment id).
-- Paginated responses are concrete named schemas (`CommentPage`, later the activity page), never generic names like `Page_CommentRead_`.
+- Paginated responses are concrete named schemas (`CommentPage`, `ActivityPage`), never generic names like `Page_CommentRead_`.
 - PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role`, `ProjectUpdate.name`, `TaskUpdate.title`, `TaskUpdate.status`, `TaskUpdate.priority` and `CommentUpdate.body` are `string`/enum, never `null`; `ProjectUpdate.description`, `TaskUpdate.description`, `TaskUpdate.assignee_id` and `TaskUpdate.due_date` are nullable).
 - Later phases add rows here as they implement endpoints, following the same pattern: `<Entity>Read` for response objects, `<Entity>Create` / `<Entity>Update` for request bodies, and `<Action>Request` for action bodies.
 
@@ -941,11 +956,17 @@ Errors, in the order they are checked:
 
 ---
 
-### 3.8 Activity (Phase 6)
+### 3.8 Activity (Phase 6, implemented)
 
 #### `GET /workspaces/{wid}/activity` (viewer)
 
-Paginated (section 1.6), **newest first**. Optional filters: `project_id`, `task_id`, `actor_id`. Filters narrow the results and never cause a `404`; an id from another workspace just matches nothing. The per-task activity tab uses `?task_id=` (the task's `workspace_id` is on the `Task`).
+Paginated (section 1.6), **newest first**: by `created_at` descending, then `id` descending; the cursor works the same way as for comments, in that direction. Query: `project_id`, `task_id`, `actor_id` (each optional, a UUID), `limit` (1 to 100, default 20) and `cursor`.
+
+- Filters combine with AND. They narrow the results and never cause a `404`; an id from another workspace, or one that does not exist, just matches nothing (`{ "items": [], "next_cursor": null }`). The per-task activity tab uses `?task_id=` (the task's `workspace_id` is on the `Task`); the feed's project filter uses `?project_id=`.
+- `project_id` matches the project's entries and those of its tasks and comments. `task_id` matches the task's entries and those of its comments. A deleted task's or project's entries no longer match (their ids become `null`, see the rules below).
+- Entries written after a walk started are newer than its cursor, so they appear on a fresh first page, not on later pages.
+- `created_at` is the time the entry was written. Entries written by one request have increasing timestamps in the order they were written, so they list in reverse of that order.
+- Any member (all roles) can read the whole feed, including entries by people who have since left the workspace (`actor` still names them).
 
 `200`:
 
@@ -969,18 +990,24 @@ Paginated (section 1.6), **newest first**. Optional filters: `project_id`, `task
       "created_at": "2026-11-22T10:05:00Z"
     }
   ],
-  "next_cursor": "eyJjIjoiMjAyNi0xMS0yMlQxMDowNTowMFoifQ"
+  "next_cursor": "eyJjIjoiMjAyNi0xMS0yMlQxMDowNTowMFoiLCJpZCI6IjYwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9"
 }
 ```
 
-Errors: `404`, `422`.
+Errors:
+- `401`.
+- `404 not_found`, message `"Workspace not found"`: the workspace does not exist or the caller is not a member (checked before the query, so a non-member with an invalid query still gets `404`).
+- `422`: a malformed `wid` (`location: "path"`), or `location: "query"` with `field` `project_id`, `task_id` or `actor_id` (not a UUID), `limit` or `cursor` (section 1.6).
 
 #### Rules
 
-- Every mutation writes its activity entry in the **same transaction** as the change. A failed mutation writes nothing.
-- One request can write several entries. For example, a `PATCH /tasks/{tid}` that changes title, assignee and status writes `task.updated`, `task.assigned` and `task.moved`.
-- `metadata` holds **snapshots** (names, keys, titles at the time of the action), so the UI renders messages from `action` + `metadata` alone. It never looks up the entity, which may have been renamed or deleted since.
-- After a task or project is deleted, its entries stay. Their `task_id` / `project_id` may become `null`.
+- Every mutation writes its activity entry in the **same transaction** as the change. A failed mutation writes nothing: requests rejected with `403`, `404`, `409` or `422` write no entry, and an unexpected error before the commit rolls the entries back with the change.
+- One request can write several entries. A `PATCH /tasks/{tid}` writes one entry per kind of change, in this order: `task.updated` (title, description, priority), `task.assigned`, `task.due_date_changed`, `task.moved` (status). For example, one that changes title, assignee and status writes `task.updated`, `task.assigned` and `task.moved`. Every other request writes at most one entry.
+- A request that changes nothing writes nothing: a PATCH with `{}` or only current values (section 1.7), and a `POST /tasks/{tid}/move` that leaves the task at the same place in the same column (same status, same neighbours). Reads never write.
+- `POST /projects/{pid}/tasks` writes only `task.created`, even when the new task has an assignee or a due date. `POST /workspaces` writes only `workspace.created` (no `member.added` for the creator).
+- `metadata` holds **snapshots** (names, keys, titles at the time of the action), so the UI renders messages from `action` + `metadata` alone. It never looks up the entity, which may have been renamed or deleted since. `TaskRef` and `ProjectRef` show the task or project as it is **after** the action (so after a rename, `task.updated` names the new title and `before.title` holds the old one).
+- After a task or project is deleted, its entries stay. Their `task_id` / `project_id` become `null`; `entity_id` and `metadata` are unchanged. The `task.deleted` entry itself has `task_id: null` (its `project_id` is set). Deleting a workspace deletes its activity.
+- `actor` is the user who made the request. For `member.removed` with `self_removal: true` (a member leaving), the actor is the member who left.
 
 Shared metadata refs: `TaskRef = { id, key, title }`, `ProjectRef = { id, name, key }`, `UserRef = { id, name }`.
 
@@ -1005,10 +1032,12 @@ Shared metadata refs: `TaskRef = { id, key, title }`, `ProjectRef = { id, name, 
 | `comment.deleted` | comment / comment id | `{ "task": TaskRef }` | Asha deleted a comment on **WEB-1** |
 
 Details:
-- `changed_fields` lists every field that changed. `before` and `after` hold the old and new values of changed fields **except** `description`, which only appears in `changed_fields` (it can be long).
+- `changed_fields` lists every field that changed, in the order `name`, `description` (projects) or `title`, `description`, `priority` (tasks). `before` and `after` hold the old and new values of changed fields **except** `description`, which only appears in `changed_fields` (it can be long). A description-only change has `"before": {}, "after": {}`.
 - `task.updated` covers `title`, `description` and `priority`. Status, assignee and due date changes use their own actions.
-- `excerpt` is the first 140 characters of the comment body.
-- A `task.moved` within the same column has `before.status == after.status`.
+- `excerpt` is the first 140 characters of the comment body (after trimming), without an ellipsis; the UI adds one if it wants. `comment.edited` has the excerpt of the new body.
+- A `task.moved` within the same column has `before.status == after.status`. A status change through `PATCH /tasks/{tid}` is also a `task.moved`.
+- `task.assigned` names the previous assignee even if they have since left the workspace. `null` means unassigned.
+- Values are JSON: ids are strings, `due_date` is `YYYY-MM-DD` or `null`, `role` and `status` are the enum strings (sections 1.2 and 1.9).
 
 ---
 

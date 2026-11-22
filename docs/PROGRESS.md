@@ -214,3 +214,52 @@ Run-wide decisions:
 - If more pages exist and the thread refetches, a just-posted comment drops out of view until "Load more".
 - Escape in the composer closes the drawer and loses the draft.
 - My Tasks does not show comment counts.
+
+## Phase 6: Activity Log
+
+**Built**
+- Backend:
+  - `activity_logs` model and migration, indexed on `(workspace_id, created_at desc)`. Deleting a task or project sets its id to null on the entries; deleting a workspace deletes them.
+  - `services/activity.py::record()` is called by every mutating service (workspace, member, project, task, comment) after its checks and before its single commit.
+  - Metadata snapshots follow contract 3.8. One PATCH can write several entries. No-op PATCHes write nothing.
+  - `GET /workspaces/{wid}/activity`: newest first, keyset cursor, filters `project_id`, `task_id`, `actor_id`.
+- UI:
+  - A pure message builder covering every action and variant, plus a safe fallback; it renders text only.
+  - `/w/:slug/activity` feed with infinite scroll and a "Load more" button, project and person filters kept in the URL, and loading, empty and error states.
+  - Comments | Activity tabs in the task drawer.
+  - Every mutation hook refreshes the workspace's activity feed.
+  - MSW mutation handlers record entries with the contract's shapes.
+- Sync Point:
+  - `ActivityRead`, `ActivityPage`, `ActivityAction` and `ActivityEntityType` are aliases of the generated types.
+  - The mock was aligned with the final backend: a move that leaves the task in place writes no entry and doesn't touch the task (new test), and `task.deleted` entries carry `task_id: null`.
+
+**Tested**
+- `lint.ps1` is clean.
+- `test.ps1`: 1271 backend tests and 713 frontend tests pass.
+  - Backend: one test per action, the multi-entry PATCH, about 35 rejected requests that write nothing, and a forced failure after `record()` for every action. Rollback leaves no row.
+- Live smoke check through the Vite proxy: 128/128. It covers:
+  - all 16 action types produced by the earlier phases' API actions;
+  - newest-first order and no duplicates across pages;
+  - exact snapshot metadata (move, self-removal, role change, `project.updated` changed fields, comment excerpt, deleted-task snapshot);
+  - the task, actor and project filters;
+  - no-op and failed mutations writing nothing;
+  - one PATCH writing `task.updated`, `task.assigned` and `task.moved`;
+  - outsider 404, invalid cursor 422, and workspace isolation.
+- The Sync check ("perform actions, see them in the feed") was verified through the API as above, and through UI flow tests on the mocks. Nothing was tried in a real browser.
+
+**Decisions**
+- `created_at` uses `clock_timestamp()`, so the entries one request writes list in a fixed order.
+- Creating a task writes only `task.created`, even with an assignee or due date.
+- Snapshots show the state after the change.
+- Backend fixes the new table exposed:
+  - A comment edit or delete racing a task delete could deadlock; it now locks the task first (regression test).
+  - A comment edit could return 500 if the comment was deleted between commit and response; it now reads `edited_at` back before committing.
+- No new libraries.
+
+**Incident**
+- Both Phase 6 subagents stalled when the host appears to have been suspended (about 16:45 to 21:50). Test timers in the killed Vitest run showed runs of thousands of seconds against a 5 s timeout, even in unrelated tests.
+- The leftover Vitest processes were killed, and both agents were resumed and finished. All later test runs are run in the foreground under a timeout.
+
+**Open issues**
+- The `actor_id` filter has no dedicated index (Phase 7 index review).
+- Infinite scroll is only tested with a fake IntersectionObserver.

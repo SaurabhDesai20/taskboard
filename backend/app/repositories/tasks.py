@@ -48,8 +48,8 @@ def lock_against_delete(db: Session, task: Task) -> bool:
     """Key-share-lock the task's row until the transaction ends, so it cannot be deleted
     before then. False if it has been deleted already.
 
-    Comment writes take it before inserting a comment that references the task. It does not
-    block task updates or moves.
+    Comment writes take it before touching a comment of the task and recording an activity
+    entry that references the task. It does not block task updates or moves.
     """
     stmt = (
         select(Task.id)

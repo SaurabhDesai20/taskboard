@@ -193,3 +193,24 @@ export type CommentUpdate = Schemas['CommentUpdate']
 
 /** Backend `CommentPage`: one page of `GET /tasks/{tid}/comments`, oldest first (contract 1.6). */
 export type CommentPage = Schemas['CommentPage']
+
+// ---------------------------------------------------------------------------------------------
+// Activity (contract 3.8): generated
+// ---------------------------------------------------------------------------------------------
+
+/** What an activity entry records (contract 3.8). New actions may appear later. */
+export type ActivityAction = Schemas['ActivityAction']
+
+/** The kind of thing `entity_id` names (for `member.*`, a user id). */
+export type ActivityEntityType = Schemas['ActivityEntityType']
+
+/**
+ * Backend `ActivityRead`: the contract's `ActivityEntry`. `metadata` holds snapshots (names,
+ * keys, titles at the time of the action) whose shape depends on `action`; it is typed loosely,
+ * as a JSON object, and read through `features/activity/messages.ts`. `project_id` and `task_id`
+ * may become null once the project or task is deleted.
+ */
+export type ActivityRead = Schemas['ActivityRead']
+
+/** Backend `ActivityPage`: one page of `GET /workspaces/{wid}/activity`, newest first (contract 1.6). */
+export type ActivityPage = Schemas['ActivityPage']

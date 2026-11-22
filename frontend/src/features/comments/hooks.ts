@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-query'
 import type { CommentCreate, CommentPage, CommentRead, Task, UserRef, UUID } from '../../api/types'
 import { taskKeys } from '../tasks/hooks'
-import { refreshAfterConflict, workspaceKeys } from '../workspaces/hooks'
+import { refreshActivity, refreshAfterConflict, workspaceKeys } from '../workspaces/hooks'
 import { commentsApi } from './api'
 
 /** Comments per page (the contract's default, sent explicitly). */
@@ -164,6 +164,7 @@ export function useCreateComment(task: TaskIds, author: UserRef | undefined) {
         })
       }
       adjustCommentCount(queryClient, task, 1)
+      refreshActivity(queryClient, task.workspace_id)
     },
     onError: (error, _body, context) => {
       const pendingId = context?.pendingId
@@ -184,7 +185,10 @@ export function useUpdateComment(task: TaskIds) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ commentId, body }: UpdateCommentVariables) => commentsApi.update(commentId, { body }),
-    onSuccess: (comment) => updateThread(queryClient, task, (pages) => replaceComment(pages, comment.id, comment)),
+    onSuccess: (comment) => {
+      updateThread(queryClient, task, (pages) => replaceComment(pages, comment.id, comment))
+      refreshActivity(queryClient, task.workspace_id)
+    },
     onError: (error) => refreshAfterConflict(queryClient, task.workspace_id, error),
   })
 }
@@ -200,6 +204,7 @@ export function useDeleteComment(task: TaskIds, { onDeleted }: { onDeleted?: () 
     onSuccess: (_result, commentId) => {
       updateThread(queryClient, task, (pages) => removeComment(pages, commentId))
       adjustCommentCount(queryClient, task, -1)
+      refreshActivity(queryClient, task.workspace_id)
       onDeleted?.()
     },
     onError: (error) => refreshAfterConflict(queryClient, task.workspace_id, error),

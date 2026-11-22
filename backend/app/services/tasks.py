@@ -17,16 +17,26 @@ Concurrency: create, update and move first lock the project's row
 (`projects_repo.lock_for_task_write`), so task writes in one project run one after the other.
 That keeps task numbers unique, positions computed from a column nobody else is changing, and
 the archived check current.
+
+Activity (section 3.8), recorded in the same transaction after every check has passed:
+- create: `task.created`; delete: `task.deleted`;
+- update: one entry per kind of change, in this order: `task.updated` (title, description,
+  priority), `task.assigned`, `task.due_date_changed`, `task.moved` (status). A no-op records
+  nothing;
+- move: `task.moved`, unless the task stays at the same place of the same column.
 """
 
-from typing import Any
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, Self
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
+from app.models.activity import ActivityAction
 from app.models.project import Project
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
 from app.repositories import comments as comments_repo
 from app.repositories import members as members_repo
@@ -44,6 +54,7 @@ from app.schemas.task import (
     WorkspaceRef,
 )
 from app.schemas.user import UserRef
+from app.services import activity
 from app.services.access import TASK_NOT_FOUND_MESSAGE, ProjectAccess, TaskAccess
 
 POSITION_STEP = 1024.0
@@ -84,6 +95,9 @@ def create(db: Session, access: ProjectAccess, data: TaskCreate) -> TaskRead:
         due_date=data.due_date,
         created_by=access.user_id,
     )
+    activity.record_task(
+        db, access.user_id, ActivityAction.TASK_CREATED, task, project, {"status": task.status}
+    )
     db.commit()
     # A new task has no comments yet.
     return _read(task, project, assignee, 0)
@@ -107,9 +121,11 @@ def update(db: Session, access: TaskAccess, data: TaskUpdate) -> TaskRead:
     fields = data.model_fields_set
     # Validate before changing anything, so a rejected request leaves the task untouched.
     new_assignee = "assignee_id" in fields and data.assignee_id != task.assignee_id
+    assignee = None
     if new_assignee and data.assignee_id is not None:
-        _member(db, project, data.assignee_id)
+        assignee = _member(db, project, data.assignee_id)
 
+    before = _TaskState.of(task)
     changed = False
     if data.title is not None and data.title != task.title:
         task.title = data.title
@@ -131,14 +147,22 @@ def update(db: Session, access: TaskAccess, data: TaskUpdate) -> TaskRead:
         task.status = data.status
         changed = True
     if changed:
+        _record_update(db, access, before, assignee)
         db.commit()
     return _read_current(db, task, project)
 
 
 def delete(db: Session, access: TaskAccess) -> None:
-    """Gate: `task.delete`. Allowed in archived projects."""
-    if not tasks_repo.delete_task(db, access.task):
+    """Gate: `task.delete`. Allowed in archived projects.
+
+    The task's activity entries stay, with `task_id` nulled by the database.
+    """
+    task, project = access.task, access.project
+    if not tasks_repo.delete_task(db, task):
         raise NotFound(TASK_NOT_FOUND_MESSAGE)
+    activity.record_task(
+        db, access.user_id, ActivityAction.TASK_DELETED, task, project, deleted=True
+    )
     db.commit()
 
 
@@ -158,8 +182,19 @@ def move(db: Session, access: TaskAccess, data: TaskMoveRequest) -> TaskRead:
     _reload(db, task)
     column = tasks_repo.list_column(db, project, data.status, exclude=task.id)
     index = _drop_index(column, data)
+    before_status = task.status
+    same_place = data.status == task.status and index == _index_in(column, task)
     task.status = data.status
     _place(task, column, index)
+    if not same_place:
+        activity.record_task(
+            db,
+            access.user_id,
+            ActivityAction.TASK_MOVED,
+            task,
+            project,
+            {"before": {"status": before_status}, "after": {"status": task.status}},
+        )
     db.commit()
     return _read_current(db, task, project)
 
@@ -260,6 +295,12 @@ def _place(task: Task, column: list[Task], index: int) -> None:
         task.position = position
 
 
+def _index_in(column: list[Task], task: Task) -> int:
+    """Where `task` currently is in its own `column` (which does not contain it)."""
+    here = (task.position, task.number)
+    return sum(1 for other in column if (other.position, other.number) < here)
+
+
 def _position_between(previous: float | None, following: float | None) -> float | None:
     """A position strictly between the neighbours, or None if they are too close."""
     if previous is None:
@@ -278,6 +319,93 @@ def _rebalance(ordered: list[Task]) -> None:
         position = rank * POSITION_STEP
         if task.position != position:
             task.position = position
+
+
+# Changes to these fields are `task.updated` entries; status, assignee and due date have their
+# own actions. In this order in `changed_fields`.
+_EDITED_FIELDS = ("title", "description", "priority")
+# Too long for `before`/`after`; only named in `changed_fields`.
+_UNSHOWN_FIELDS = frozenset({"description"})
+
+
+@dataclass(frozen=True)
+class _TaskState:
+    """The task fields an update can change, as they were before it."""
+
+    title: str
+    description: str | None
+    priority: TaskPriority
+    status: TaskStatus
+    assignee_id: UUID | None
+    due_date: date | None
+
+    @classmethod
+    def of(cls, task: Task) -> Self:
+        return cls(
+            title=task.title,
+            description=task.description,
+            priority=task.priority,
+            status=task.status,
+            assignee_id=task.assignee_id,
+            due_date=task.due_date,
+        )
+
+
+def _record_update(
+    db: Session, access: TaskAccess, before: _TaskState, new_assignee: User | None
+) -> None:
+    """The entries of one update, one per kind of change (contract 3.8). `new_assignee` is the
+    task's assignee after the update."""
+    task, project, actor_id = access.task, access.project, access.user_id
+    after = _TaskState.of(task)
+    edited = [field for field in _EDITED_FIELDS if getattr(before, field) != getattr(after, field)]
+    if edited:
+        shown = [field for field in edited if field not in _UNSHOWN_FIELDS]
+        activity.record_task(
+            db,
+            actor_id,
+            ActivityAction.TASK_UPDATED,
+            task,
+            project,
+            {
+                "changed_fields": edited,
+                "before": {field: getattr(before, field) for field in shown},
+                "after": {field: getattr(after, field) for field in shown},
+            },
+        )
+    if before.assignee_id != after.assignee_id:
+        previous = (
+            None if before.assignee_id is None else users_repo.get_by_id(db, before.assignee_id)
+        )
+        activity.record_task(
+            db,
+            actor_id,
+            ActivityAction.TASK_ASSIGNED,
+            task,
+            project,
+            {
+                "before": {"assignee": activity.user_ref(previous)},
+                "after": {"assignee": activity.user_ref(new_assignee)},
+            },
+        )
+    if before.due_date != after.due_date:
+        activity.record_task(
+            db,
+            actor_id,
+            ActivityAction.TASK_DUE_DATE_CHANGED,
+            task,
+            project,
+            {"before": {"due_date": before.due_date}, "after": {"due_date": after.due_date}},
+        )
+    if before.status != after.status:
+        activity.record_task(
+            db,
+            actor_id,
+            ActivityAction.TASK_MOVED,
+            task,
+            project,
+            {"before": {"status": before.status}, "after": {"status": after.status}},
+        )
 
 
 def _task_fields(

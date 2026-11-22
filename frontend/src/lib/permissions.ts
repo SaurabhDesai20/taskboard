@@ -12,6 +12,10 @@ export const ROLE_LABELS: Readonly<Record<Role, string>> = {
   viewer: 'Viewer',
 }
 
+export function isRole(value: unknown): value is Role {
+  return typeof value === 'string' && (ROLES as readonly string[]).includes(value)
+}
+
 /**
  * Who may do what. The action identifiers are shared with the backend's `can()`, so this table
  * can be compared with `backend/app/services/permissions.py` line by line.

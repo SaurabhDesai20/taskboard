@@ -3,11 +3,13 @@ import type { Member, Project, Role, Task, UUID } from '../../api/types'
 import { Modal } from '../../components/Modal'
 import { SelectField } from '../../components/SelectField'
 import { StatusMessage } from '../../components/StatusMessage'
+import { Tabs } from '../../components/Tabs'
 import { TextAreaField } from '../../components/TextAreaField'
 import { TextField } from '../../components/TextField'
 import { formatDate, todayDateOnly } from '../../lib/dates'
 import { formErrorsFromError } from '../../lib/formErrors'
 import { useForm } from '../../lib/useForm'
+import { TaskActivity } from '../activity/TaskActivity'
 import { CommentsSection } from '../comments/CommentsSection'
 import { DueDate } from './DueDate'
 import { isOverdue } from './dueDates'
@@ -68,7 +70,14 @@ export function TaskDrawer({
         ) : (
           <TaskReadOnly task={task} reason={readOnlyReason} />
         )}
-        <CommentsSection task={task} project={project} role={role} />
+        <Tabs
+          label="Comments and activity"
+          className="task-drawer__tabs"
+          tabs={[
+            { id: 'comments', label: 'Comments', panel: <CommentsSection task={task} project={project} role={role} /> },
+            { id: 'activity', label: 'Activity', panel: <TaskActivity task={task} /> },
+          ]}
+        />
         {canDelete ? <DeleteTask key={task.id} task={task} onDeleted={onClose} /> : null}
       </>
     )

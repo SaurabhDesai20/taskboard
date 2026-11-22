@@ -1,4 +1,5 @@
-// Contract section 3.7 (Comments) with the access rules of 1.10 and the cursor pagination of 1.6.
+// Contract section 3.7 (Comments) with the access rules of 1.10 and the cursor pagination of 1.6
+// (../pagination.ts).
 import { http, HttpResponse } from 'msw'
 import type { CommentPage, CommentRead, FieldError } from '../../api/types'
 import { can } from '../../lib/permissions'
@@ -26,6 +27,8 @@ import {
   validateStrings,
   validationErrorResponse,
 } from '../http'
+import { isAfter, paginate, readCursor, readLimit } from '../pagination'
+import { commentExcerpt, logCommentActivity } from './activity'
 import { requireTaskMember } from './tasks'
 
 // Wording from contract 3.7 (the 403 table) and 1.6.
@@ -36,12 +39,9 @@ const MESSAGES = {
   notAuthorEdit: 'Only the author can edit this comment',
   notAuthorDelete: "Only owners and admins can delete other people's comments",
   archived: 'This project is archived, so its comments are read-only',
-  invalidCursor: 'Invalid cursor',
 }
 
 const BODY_RULE = { min: 1, max: 5000 }
-const DEFAULT_LIMIT = 20
-const MAX_LIMIT = 100
 
 // ---------------------------------------------------------------------------------------------
 // Access
@@ -76,58 +76,6 @@ function readBody(raw: Record<string, unknown>): string | Response {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Cursor pagination (contract 1.6): the position of the last item returned, opaque to clients
-// ---------------------------------------------------------------------------------------------
-
-interface CursorPosition {
-  c: string
-  id: string
-}
-
-function encodeCursor(comment: MockCommentRecord): string {
-  const json = JSON.stringify({ c: comment.created_at, id: comment.id } satisfies CursorPosition)
-  return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-function decodeCursor(cursor: string): CursorPosition | null {
-  try {
-    const value: unknown = JSON.parse(atob(cursor.replace(/-/g, '+').replace(/_/g, '/')))
-    if (typeof value === 'object' && value !== null && 'c' in value && 'id' in value) {
-      const { c, id } = value
-      if (typeof c === 'string' && typeof id === 'string' && !Number.isNaN(Date.parse(c))) return { c, id }
-    }
-  } catch {
-    // Falls through to "invalid".
-  }
-  return null
-}
-
-const isAfter = (comment: MockCommentRecord, position: CursorPosition) =>
-  comment.created_at > position.c || (comment.created_at === position.c && comment.id > position.id)
-
-function readLimit(params: URLSearchParams, errors: FieldError[]): number {
-  const raw = params.get('limit')
-  if (raw === null) return DEFAULT_LIMIT
-  const fail = (message: string) => {
-    errors.push({ field: 'limit', location: 'query', message })
-    return DEFAULT_LIMIT
-  }
-  if (!/^\s*[+-]?\d+\s*$/.test(raw)) return fail('Input should be a valid integer, unable to parse string as an integer')
-  const limit = Number(raw)
-  if (limit < 1) return fail('Input should be greater than or equal to 1')
-  if (limit > MAX_LIMIT) return fail(`Input should be less than or equal to ${MAX_LIMIT}`)
-  return limit
-}
-
-function readCursor(params: URLSearchParams, errors: FieldError[]): CursorPosition | null {
-  const raw = params.get('cursor')
-  if (raw === null) return null
-  const position = decodeCursor(raw)
-  if (!position) errors.push({ field: 'cursor', location: 'query', message: MESSAGES.invalidCursor })
-  return position
-}
-
-// ---------------------------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------------------------
 
@@ -141,13 +89,9 @@ export const commentHandlers = [
     const cursor = readCursor(searchParams, errors)
     if (errors.length > 0) return validationErrorResponse(errors)
 
-    const remaining = commentsOf(access.task.id).filter((comment) => !cursor || isAfter(comment, cursor))
-    const page = remaining.slice(0, limit)
-    const last = page[page.length - 1]
-    return HttpResponse.json<CommentPage>({
-      items: page.map(toComment),
-      next_cursor: remaining.length > limit && last ? encodeCursor(last) : null,
-    })
+    // Oldest first (contract 3.7).
+    const page = paginate(commentsOf(access.task.id), cursor, limit, isAfter)
+    return HttpResponse.json<CommentPage>({ items: page.items.map(toComment), next_cursor: page.next_cursor })
   }),
 
   http.post(`${API}/tasks/:tid/comments`, async ({ params, request }) => {
@@ -164,6 +108,7 @@ export const commentHandlers = [
     if (project.archived_at !== null) return archivedConflict()
 
     const comment = createComment({ taskId: task.id, authorId: membership.user_id, body })
+    logCommentActivity(comment, membership.user_id, 'comment.created', { excerpt: commentExcerpt(body) })
     return HttpResponse.json<CommentRead>(toComment(comment), { status: 201 })
   }),
 
@@ -192,6 +137,7 @@ export const commentHandlers = [
     if (body !== undefined && body !== comment.body) {
       comment.body = body
       comment.edited_at = nextCommentTimestamp()
+      logCommentActivity(comment, membership.user_id, 'comment.edited', { excerpt: commentExcerpt(body) })
     }
     return HttpResponse.json<CommentRead>(toComment(comment))
   }),
@@ -209,6 +155,7 @@ export const commentHandlers = [
     if (!can(membership.role, 'comment.delete_any') && comment.author_id !== membership.user_id) {
       return reasonError('forbidden', 'not_author', MESSAGES.notAuthorDelete)
     }
+    logCommentActivity(comment, membership.user_id, 'comment.deleted')
     deleteComment(comment.id)
     return new HttpResponse(null, { status: 204 })
   }),

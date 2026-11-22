@@ -14,11 +14,19 @@ Author-or-admin rule (PLAN.md section 4):
 Archived projects: creating and editing comments is a 409 `project_archived`; deleting works.
 Create and edit share-lock the project first (`projects_repo.lock_for_comment_write`), so the
 archived check is current under concurrent archives.
+
+Activity (section 3.8): creating, editing (when the body changes) and deleting record
+`comment.created`, `comment.edited` and `comment.deleted` in the same transaction. Those entries
+reference the task, so every write first locks the task against deletion
+(`tasks_repo.lock_against_delete`) and only then the comment. A task delete locks the same rows
+in the same order (the task, then its comments by cascade), so the two wait for each other
+instead of deadlocking.
 """
 
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, Forbidden, NotFound
+from app.models.activity import ActivityAction
 from app.models.comment import Comment
 from app.models.project import Project
 from app.models.user import User
@@ -29,6 +37,7 @@ from app.repositories import users as users_repo
 from app.schemas.comment import CommentCreate, CommentPage, CommentRead, CommentUpdate
 from app.schemas.pagination import Cursor
 from app.schemas.user import UserRef
+from app.services import activity
 from app.services.access import (
     COMMENT_NOT_FOUND_MESSAGE,
     TASK_NOT_FOUND_MESSAGE,
@@ -68,6 +77,15 @@ def create(db: Session, access: TaskAccess, data: CommentCreate) -> CommentRead:
     if not tasks_repo.lock_against_delete(db, access.task):
         raise NotFound(TASK_NOT_FOUND_MESSAGE)
     comment = comments_repo.create(db, task=access.task, author_id=access.user_id, body=data.body)
+    activity.record_comment(
+        db,
+        access.user_id,
+        ActivityAction.COMMENT_CREATED,
+        comment.id,
+        access.task,
+        access.project,
+        {"excerpt": activity.excerpt(comment.body)},
+    )
     db.commit()
     return _read(comment, users_repo.get_existing(db, comment.author_id))
 
@@ -82,10 +100,19 @@ def update(db: Session, access: CommentAccess, data: CommentUpdate) -> CommentRe
     if not _is_author(access):
         raise Forbidden(NOT_AUTHOR_EDIT_MESSAGE, {"reason": "not_author"})
     _lock_active_project(db, access.project)
-    if not comments_repo.lock(db, comment):
+    if not tasks_repo.lock_against_delete(db, access.task) or not comments_repo.lock(db, comment):
         raise NotFound(COMMENT_NOT_FOUND_MESSAGE)
     if data.body is not None and data.body != comment.body:
         comments_repo.edit(db, comment, data.body)
+        activity.record_comment(
+            db,
+            access.user_id,
+            ActivityAction.COMMENT_EDITED,
+            comment.id,
+            access.task,
+            access.project,
+            {"excerpt": activity.excerpt(data.body)},
+        )
         db.commit()
     return _read(comment, users_repo.get_existing(db, comment.author_id))
 
@@ -96,8 +123,18 @@ def delete(db: Session, access: CommentAccess) -> None:
     projects."""
     if not _is_author(access) and not can(access.role, "comment.delete_any"):
         raise Forbidden(denied_message("comment.delete_any"), {"reason": "not_author"})
-    if not comments_repo.delete_comment(db, access.comment):
+    if not tasks_repo.lock_against_delete(db, access.task) or not comments_repo.delete_comment(
+        db, access.comment
+    ):
         raise NotFound(COMMENT_NOT_FOUND_MESSAGE)
+    activity.record_comment(
+        db,
+        access.user_id,
+        ActivityAction.COMMENT_DELETED,
+        access.comment.id,
+        access.task,
+        access.project,
+    )
     db.commit()
 
 

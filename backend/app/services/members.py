@@ -5,6 +5,9 @@ Membership rules, checked after the route's `require_role(...)` gate:
 - Admins and owners are "privileged" (they can manage members). Acting on a privileged member,
   or granting a privileged role, needs `member.promote`: owners only (403 `protected_member`).
 - Any member may leave; nobody may remove or demote the last owner (409 `last_owner`).
+
+Adding, removing and role changes record `member.added`, `member.removed` and
+`member.role_changed` in the same transaction (section 3.8), after every check has passed.
 """
 
 from uuid import UUID
@@ -14,11 +17,13 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed
 from app.db.errors import is_unique_violation
+from app.models.activity import ActivityAction
 from app.models.user import User
 from app.models.workspace import WorkspaceMember
 from app.repositories import members as members_repo
 from app.repositories import users as users_repo
 from app.schemas.member import MemberCreate, MemberRead, MemberUpdate
+from app.services import activity
 from app.services.access import WorkspaceAccess, authorize
 from app.services.permissions import Role, can
 
@@ -60,6 +65,14 @@ def add(db: Session, access: WorkspaceAccess, data: MemberCreate) -> MemberRead:
         if is_unique_violation(exc, MEMBER_PK_CONSTRAINT):
             raise _already_member() from exc
         raise
+    activity.record_member(
+        db,
+        access.user_id,
+        ActivityAction.MEMBER_ADDED,
+        access.workspace.id,
+        user,
+        {"role": member.role},
+    )
     db.commit()
     return _read(member, user)
 
@@ -76,7 +89,16 @@ def change_role(
         return _read(member, user)
     _check_can_grant(access.role, data.role)
     _ensure_another_owner_remains(db, access, user_id)
+    before = member.role
     member.role = data.role
+    activity.record_member(
+        db,
+        access.user_id,
+        ActivityAction.MEMBER_ROLE_CHANGED,
+        access.workspace.id,
+        user,
+        {"before": {"role": before}, "after": {"role": member.role}},
+    )
     db.commit()
     return _read(member, user)
 
@@ -86,11 +108,20 @@ def remove(db: Session, access: WorkspaceAccess, user_id: UUID) -> None:
     leaving = user_id == access.user_id
     if not leaving:
         authorize(access.role, "member.manage")
-    member, _user = _get_member(db, access, user_id)
+    member, user = _get_member(db, access, user_id)
     if not leaving:
         _check_can_act_on(access.role, member.role)
     _ensure_another_owner_remains(db, access, user_id)
+    role = member.role
     members_repo.delete(db, member)
+    activity.record_member(
+        db,
+        access.user_id,
+        ActivityAction.MEMBER_REMOVED,
+        access.workspace.id,
+        user,
+        {"role": role, "self_removal": leaving},
+    )
     db.commit()
 
 

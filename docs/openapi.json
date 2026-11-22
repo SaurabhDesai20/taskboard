@@ -2464,10 +2464,311 @@
           }
         }
       }
+    },
+    "/api/workspaces/{wid}/activity": {
+      "get": {
+        "tags": [
+          "activity"
+        ],
+        "summary": "List Activity",
+        "operationId": "list_activity_api_workspaces__wid__activity_get",
+        "security": [
+          {
+            "CookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Workspace id",
+              "title": "Wid"
+            },
+            "description": "Workspace id"
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only entries about this project",
+              "title": "Project Id"
+            },
+            "description": "Only entries about this project"
+          },
+          {
+            "name": "task_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only entries about this task",
+              "title": "Task Id"
+            },
+            "description": "Only entries about this task"
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only entries by this user",
+              "title": "Actor Id"
+            },
+            "description": "Only entries by this user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Page size",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Page size"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The previous page's `next_cursor`; omit for the first page",
+              "title": "Cursor"
+            },
+            "description": "The previous page's `next_cursor`; omit for the first page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActivityAction": {
+        "type": "string",
+        "enum": [
+          "workspace.created",
+          "workspace.renamed",
+          "member.added",
+          "member.removed",
+          "member.role_changed",
+          "project.created",
+          "project.updated",
+          "project.archived",
+          "task.created",
+          "task.updated",
+          "task.moved",
+          "task.assigned",
+          "task.due_date_changed",
+          "task.deleted",
+          "comment.created",
+          "comment.edited",
+          "comment.deleted"
+        ],
+        "title": "ActivityAction",
+        "description": "What happened. The part before the dot is the entity type."
+      },
+      "ActivityEntityType": {
+        "type": "string",
+        "enum": [
+          "workspace",
+          "member",
+          "project",
+          "task",
+          "comment"
+        ],
+        "title": "ActivityEntityType",
+        "description": "The kind of thing an entry is about (its `entity_id` names which one)."
+      },
+      "ActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ActivityPage",
+        "description": "One page of a workspace's activity, newest first. `next_cursor` is null on the last\npage."
+      },
+      "ActivityRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspace Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActivityAction"
+          },
+          "entity_type": {
+            "$ref": "#/components/schemas/ActivityEntityType"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entity Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "project_id",
+          "task_id",
+          "actor",
+          "action",
+          "entity_type",
+          "entity_id",
+          "metadata",
+          "created_at"
+        ],
+        "title": "ActivityRead",
+        "description": "The contract's `ActivityEntry`."
+      },
       "CommentCreate": {
         "properties": {
           "body": {

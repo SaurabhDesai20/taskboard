@@ -3,6 +3,7 @@
 import itertools
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import ACCESS_TOKEN_COOKIE, create_access_token, hash_password
+from app.models.activity import ActivityAction, ActivityLog
 from app.models.comment import Comment
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
@@ -180,6 +182,43 @@ def create_comment(
     db.add(comment)
     db.flush()
     return comment
+
+
+def create_activity(
+    db: Session,
+    workspace: Workspace,
+    actor: User,
+    *,
+    project: Project | None = None,
+    task: Task | None = None,
+    metadata: dict[str, Any] | None = None,
+    created_at: datetime | None = None,
+) -> ActivityLog:
+    """An activity entry in `workspace` by `actor`, written directly (the services write theirs
+    through app.services.activity): `task.updated` when a task is given (with its project),
+    else `project.updated` for a project, else `workspace.renamed`. `created_at` overrides the
+    database clock."""
+    if task is not None:
+        action, entity_id = ActivityAction.TASK_UPDATED, task.id
+    elif project is not None:
+        action, entity_id = ActivityAction.PROJECT_UPDATED, project.id
+    else:
+        action, entity_id = ActivityAction.WORKSPACE_RENAMED, workspace.id
+    entry = ActivityLog(
+        workspace_id=workspace.id,
+        project_id=project.id if project else None,
+        task_id=task.id if task else None,
+        actor_id=actor.id,
+        action=action,
+        entity_type=action.entity_type,
+        entity_id=entity_id,
+        metadata_=metadata if metadata is not None else {"n": next(_sequence)},
+    )
+    if created_at is not None:
+        entry.created_at = created_at
+    db.add(entry)
+    db.flush()
+    return entry
 
 
 @dataclass(frozen=True)

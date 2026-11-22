@@ -1,8 +1,9 @@
 """Cursor pagination for comments and activity (docs/api-contract.md section 1.6).
 
-A page is ordered by `(created_at, id)`. The cursor is the position of the last item of the
-previous page: base64url (no padding) of `{"c": "<created_at, ISO 8601 UTC>", "id": "<uuid>"}`.
-Clients treat it as opaque. Keyset positions stay valid when items are added or deleted.
+A page is ordered by `(created_at, id)`: ascending for comments (oldest first), descending for
+activity (newest first). The cursor is the position of the last item of the previous page:
+base64url (no padding) of `{"c": "<created_at, ISO 8601 UTC>", "id": "<uuid>"}`. Clients treat
+it as opaque. Keyset positions stay valid when items are added or deleted.
 """
 
 import base64

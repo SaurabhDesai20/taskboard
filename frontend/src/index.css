@@ -557,3 +557,46 @@ a {
   height: 1.5rem;
   font-size: 0.625rem;
 }
+
+/* Tabs (components/Tabs.tsx) */
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tabs__list {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabs__tab {
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  color: var(--color-text-muted);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.tabs__tab:hover {
+  color: var(--color-text);
+}
+
+.tabs__tab[aria-selected='true'] {
+  font-weight: 600;
+  color: var(--color-text);
+  border-bottom-color: var(--color-primary);
+}
+
+.tabs__panel:focus {
+  outline: none;
+}
+
+.tabs__panel:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

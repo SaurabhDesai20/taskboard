@@ -8,7 +8,7 @@ import {
   PROJECT_KEY_MIN_LENGTH,
   PROJECT_KEY_PATTERN,
 } from '../../lib/projectKey'
-import { createProject, projectsOf } from '../db'
+import { createProject, projectRef, projectsOf } from '../db'
 import {
   API,
   compareText,
@@ -20,6 +20,7 @@ import {
   validateStrings,
   validationErrorResponse,
 } from '../http'
+import { logProjectActivity } from './activity'
 
 // Wording from contract 3.5.
 const MESSAGES = {
@@ -87,6 +88,7 @@ export const projectHandlers = [
       { workspaceId: workspace.id, name: values.name, key: values.key, description: description.value },
       user.id,
     )
+    logProjectActivity(project, user.id, 'project.created', { project: projectRef(project) })
     return HttpResponse.json<Project>(project, { status: 201 })
   }),
 
@@ -116,8 +118,30 @@ export const projectHandlers = [
     const description = body.description === undefined ? undefined : readDescription(body.description)
     if (description?.error) errors.push(description.error)
     if (errors.length > 0) return validationErrorResponse(errors)
-    if (name !== undefined) project.name = name
-    if (description) project.description = description.value
+
+    // One project.updated entry naming every changed field; the description's values are left
+    // out (contract 3.8). Nothing changed, nothing recorded.
+    const changedFields: string[] = []
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    if (name !== undefined && name !== project.name) {
+      changedFields.push('name')
+      before.name = project.name
+      after.name = name
+      project.name = name
+    }
+    if (description && description.value !== project.description) {
+      changedFields.push('description')
+      project.description = description.value
+    }
+    if (changedFields.length > 0) {
+      logProjectActivity(project, membership.user_id, 'project.updated', {
+        project: projectRef(project),
+        changed_fields: changedFields,
+        before,
+        after,
+      })
+    }
     return HttpResponse.json<Project>(project)
   }),
 
@@ -132,6 +156,7 @@ export const projectHandlers = [
       return reasonError('conflict', 'already_archived', MESSAGES.alreadyArchived)
     }
     project.archived_at = new Date().toISOString()
+    logProjectActivity(project, membership.user_id, 'project.archived', { project: projectRef(project) })
     return HttpResponse.json<Project>(project)
   }),
 ]

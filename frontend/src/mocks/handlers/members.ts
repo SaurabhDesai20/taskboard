@@ -10,6 +10,7 @@ import {
   membershipsOf,
   removeMembership,
   roleRank,
+  userRef,
   type MockMembershipRecord,
 } from '../db'
 import {
@@ -24,6 +25,7 @@ import {
   validateStrings,
   validationErrorResponse,
 } from '../http'
+import { logMemberActivity } from './activity'
 
 // Wording from contract 3.4 where it gives one.
 const MESSAGES = {
@@ -108,6 +110,7 @@ export const memberHandlers = [
       joined_at: new Date().toISOString(),
     }
     db.members.push(record)
+    logMemberActivity(workspace.id, membership.user_id, 'member.added', user.id, { user: userRef(user.id), role })
     return HttpResponse.json<Member>(toMember(record), { status: 201 })
   }),
 
@@ -140,7 +143,16 @@ export const memberHandlers = [
     if (role && target.role === 'owner' && role !== 'owner' && ownerCount(workspace.id) === 1) {
       return reasonError('conflict', 'last_owner', MESSAGES.lastOwner)
     }
-    if (role) target.role = role
+    // The member's current role (or no role) changes nothing and records nothing.
+    if (role && role !== target.role) {
+      const before = { role: target.role }
+      target.role = role
+      logMemberActivity(workspace.id, user.id, 'member.role_changed', target.user_id, {
+        user: userRef(target.user_id),
+        before,
+        after: { role },
+      })
+    }
     return HttpResponse.json<Member>(toMember(target))
   }),
 
@@ -166,6 +178,11 @@ export const memberHandlers = [
       return reasonError('conflict', 'last_owner', leaving ? MESSAGES.lastOwnerLeaving : MESSAGES.lastOwner)
     }
     removeMembership(workspace.id, target.user_id)
+    logMemberActivity(workspace.id, user.id, 'member.removed', target.user_id, {
+      user: userRef(target.user_id),
+      role: target.role,
+      self_removal: leaving,
+    })
     return new HttpResponse(null, { status: 204 })
   }),
 ]

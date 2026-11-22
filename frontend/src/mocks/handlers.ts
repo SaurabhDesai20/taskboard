@@ -2,6 +2,7 @@
 // Shared by the browser worker (dev, VITE_API_MOCKING=true) and the Node server (Vitest).
 // One file per feature in ./handlers/; in-memory data in ./db.ts.
 import { resetMockDb } from './db'
+import { activityHandlers } from './handlers/activity'
 import { authHandlers } from './handlers/auth'
 import { commentHandlers } from './handlers/comments'
 import { healthHandlers } from './handlers/health'
@@ -21,6 +22,7 @@ export const handlers = [
   ...projectHandlers,
   ...taskHandlers,
   ...commentHandlers,
+  ...activityHandlers,
 ]
 
 /** Back to the seeded data and no session. Tests call it after each test (src/test/setup.ts). */

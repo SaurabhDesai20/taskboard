@@ -21,6 +21,7 @@ import {
   validateStrings,
   validationErrorResponse,
 } from '../http'
+import { logWorkspaceActivity } from './activity'
 
 const NAME_RULE = { min: 1, max: 100 }
 
@@ -77,6 +78,7 @@ export const workspaceHandlers = [
       return reasonError('conflict', 'slug_taken', 'This workspace URL is already taken')
     }
     const workspace = createWorkspace({ name: values.name, slug: slug ?? uniqueSlug(values.name) }, user.id)
+    logWorkspaceActivity(workspace.id, user.id, 'workspace.created', { name: workspace.name })
     return HttpResponse.json<Workspace>(toWorkspace(workspace, 'owner'), { status: 201 })
   }),
 
@@ -89,7 +91,7 @@ export const workspaceHandlers = [
   http.patch(`${API}/workspaces/:wid`, async ({ params, request }) => {
     const access = requireWorkspaceMember(params.wid)
     if (access instanceof Response) return access
-    const { workspace, membership } = access
+    const { user, workspace, membership } = access
     if (!can(membership.role, 'workspace.manage')) {
       return reasonError('forbidden', 'insufficient_role', 'Only owners can rename the workspace')
     }
@@ -99,7 +101,11 @@ export const workspaceHandlers = [
     if (body.name !== undefined) {
       const { values, errors } = validateStrings({ name: body.name }, { name: NAME_RULE })
       if (errors.length > 0) return validationErrorResponse(errors)
-      workspace.name = values.name
+      if (values.name !== workspace.name) {
+        const before = { name: workspace.name }
+        workspace.name = values.name
+        logWorkspaceActivity(workspace.id, user.id, 'workspace.renamed', { before, after: { name: workspace.name } })
+      }
     }
     return HttpResponse.json<Workspace>(toWorkspace(workspace, membership.role))
   }),

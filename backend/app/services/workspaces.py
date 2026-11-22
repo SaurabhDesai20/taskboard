@@ -1,6 +1,8 @@
 """Workspace CRUD (docs/api-contract.md section 3.3).
 
 Functions that take a WorkspaceAccess expect the route's `require_role(...)` gate to have run.
+Creating and renaming record `workspace.created` / `workspace.renamed` in the same transaction
+(section 3.8). Deleting removes the workspace's activity with everything else.
 """
 
 import itertools
@@ -13,10 +15,12 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict
 from app.db.errors import is_unique_violation
+from app.models.activity import ActivityAction
 from app.models.workspace import Workspace
 from app.repositories import members as members_repo
 from app.repositories import workspaces as workspaces_repo
 from app.schemas.workspace import SLUG_MAX_LENGTH, WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
+from app.services import activity
 from app.services.access import WorkspaceAccess
 from app.services.permissions import Role
 
@@ -46,6 +50,9 @@ def create(db: Session, user_id: UUID, data: WorkspaceCreate) -> WorkspaceRead:
     else:
         workspace = _insert_with_derived_slug(db, name=data.name, created_by=user_id)
     members_repo.add(db, workspace_id=workspace.id, user_id=user_id, role=Role.OWNER)
+    activity.record_workspace(
+        db, user_id, ActivityAction.WORKSPACE_CREATED, workspace, {"name": workspace.name}
+    )
     db.commit()
     return _read(workspace, Role.OWNER)
 
@@ -58,7 +65,15 @@ def update(db: Session, access: WorkspaceAccess, data: WorkspaceUpdate) -> Works
     """Rename. An omitted or unchanged name leaves the workspace as it is."""
     workspace = access.workspace
     if data.name is not None and data.name != workspace.name:
+        before = workspace.name
         workspace.name = data.name
+        activity.record_workspace(
+            db,
+            access.user_id,
+            ActivityAction.WORKSPACE_RENAMED,
+            workspace,
+            {"before": {"name": before}, "after": {"name": workspace.name}},
+        )
         db.commit()
     return _read(workspace, access.role)
 

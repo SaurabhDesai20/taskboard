@@ -376,3 +376,95 @@ def test_session_cookie_is_the_security_scheme(openapi: dict[str, Any]) -> None:
         "description": scheme["description"],
     }
     assert openapi["paths"]["/api/auth/me"]["get"]["security"] == [{"CookieAuth": []}]
+
+
+def test_activity_schema_names(openapi: dict[str, Any]) -> None:
+    operation = openapi["paths"]["/api/workspaces/{wid}/activity"]["get"]
+
+    assert _ref(operation["responses"]["200"]) == "ActivityPage"
+    for status in ("401", "404", "422"):
+        assert _ref(operation["responses"][status]) == "ErrorEnvelope"
+    assert operation["security"] == [{"CookieAuth": []}]
+    assert [(p["name"], p["in"]) for p in operation["parameters"]] == [
+        ("wid", "path"),
+        ("project_id", "query"),
+        ("task_id", "query"),
+        ("actor_id", "query"),
+        ("limit", "query"),
+        ("cursor", "query"),
+    ]
+    query = {p["name"]: p for p in operation["parameters"] if p["in"] == "query"}
+    assert all(p["required"] is False for p in query.values())
+    for name in ("project_id", "task_id", "actor_id"):
+        assert query[name]["schema"]["anyOf"][0] == {"type": "string", "format": "uuid"}
+    # Same pagination parameters as the comment list.
+    comments = openapi["paths"]["/api/tasks/{tid}/comments"]["get"]["parameters"]
+    for param in comments:
+        if param["in"] == "query":
+            assert query[param["name"]]["schema"] == param["schema"]
+
+
+def test_activity_shapes_match_the_contract(openapi: dict[str, Any]) -> None:
+    schemas = openapi["components"]["schemas"]
+    read_fields = {
+        "ActivityRead": {
+            "id",
+            "workspace_id",
+            "project_id",
+            "task_id",
+            "actor",
+            "action",
+            "entity_type",
+            "entity_id",
+            "metadata",
+            "created_at",
+        },
+        "ActivityPage": {"items", "next_cursor"},
+    }
+    for name, fields in read_fields.items():
+        assert set(schemas[name]["properties"]) == fields, name
+        assert set(schemas[name]["required"]) == fields, name
+
+    read = schemas["ActivityRead"]["properties"]
+    assert read["actor"] == {"$ref": "#/components/schemas/UserRef"}
+    assert read["action"] == {"$ref": "#/components/schemas/ActivityAction"}
+    assert read["entity_type"] == {"$ref": "#/components/schemas/ActivityEntityType"}
+    assert read["metadata"]["type"] == "object"
+    for nullable in ("project_id", "task_id"):
+        assert {"type": "null"} in read[nullable]["anyOf"]
+    page = schemas["ActivityPage"]["properties"]
+    assert page["items"]["items"] == {"$ref": "#/components/schemas/ActivityRead"}
+    assert page["next_cursor"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
+
+def test_activity_enums_are_named_schemas(openapi: dict[str, Any]) -> None:
+    schemas = openapi["components"]["schemas"]
+
+    assert schemas["ActivityAction"]["type"] == "string"
+    assert schemas["ActivityAction"]["enum"] == [
+        "workspace.created",
+        "workspace.renamed",
+        "member.added",
+        "member.removed",
+        "member.role_changed",
+        "project.created",
+        "project.updated",
+        "project.archived",
+        "task.created",
+        "task.updated",
+        "task.moved",
+        "task.assigned",
+        "task.due_date_changed",
+        "task.deleted",
+        "comment.created",
+        "comment.edited",
+        "comment.deleted",
+    ]
+    assert schemas["ActivityEntityType"]["type"] == "string"
+    assert schemas["ActivityEntityType"]["enum"] == [
+        "workspace",
+        "member",
+        "project",
+        "task",
+        "comment",
+    ]
