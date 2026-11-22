@@ -5,9 +5,11 @@ import type { FieldErrors } from './formErrors'
 
 type TextControl = HTMLInputElement | HTMLTextAreaElement
 
-interface FormHelpers {
+interface FormHelpers<F extends string> {
   /** Back to the initial values, with no errors shown (e.g. after a successful submit). */
   reset: () => void
+  /** To new values (e.g. what the server saved), with no errors shown. */
+  resetTo: (values: Record<F, string>) => void
 }
 
 interface UseFormOptions<F extends string> {
@@ -16,7 +18,7 @@ interface UseFormOptions<F extends string> {
   fields: readonly F[]
   validate: (values: Record<F, string>) => FieldErrors<F>
   /** Called with the current values when the form is submitted without client errors. */
-  onValidSubmit: (values: Record<F, string>, helpers: FormHelpers) => void
+  onValidSubmit: (values: Record<F, string>, helpers: FormHelpers<F>) => void
 }
 
 export function useForm<F extends string>({
@@ -35,7 +37,11 @@ export function useForm<F extends string>({
   const errors: FieldErrors<F> = submitted ? validate(values) : {}
 
   function reset() {
-    setValues(resetValues)
+    resetTo(resetValues)
+  }
+
+  function resetTo(next: Record<F, string>) {
+    setValues(next)
     setSubmitted(false)
   }
 
@@ -64,7 +70,7 @@ export function useForm<F extends string>({
       inputs.current[firstInvalid]?.focus()
       return
     }
-    onValidSubmit(values, { reset })
+    onValidSubmit(values, { reset, resetTo })
   }
 
   return { values, errors, register, setValue, handleSubmit, reset }

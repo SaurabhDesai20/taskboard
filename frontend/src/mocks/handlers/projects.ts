@@ -8,16 +8,14 @@ import {
   PROJECT_KEY_MIN_LENGTH,
   PROJECT_KEY_PATTERN,
 } from '../../lib/projectKey'
-import { createProject, findMembership, findProject, projectsOf, type MockMembershipRecord, type MockProjectRecord } from '../db'
+import { createProject, projectsOf } from '../db'
 import {
   API,
   compareText,
-  errorResponse,
-  invalidUuidParams,
   readBooleanQuery,
   readJsonObject,
   reasonError,
-  requireUser,
+  requireProjectMember,
   requireWorkspaceMember,
   validateStrings,
   validationErrorResponse,
@@ -25,7 +23,6 @@ import {
 
 // Wording from contract 3.5.
 const MESSAGES = {
-  notFound: 'Project not found',
   insufficientRole: 'Only owners and admins can create, edit or archive projects',
   keyTaken: 'This project key is already used in this workspace',
   alreadyArchived: 'This project is already archived',
@@ -47,26 +44,6 @@ function readDescription(raw: unknown): { value: string | null; error?: FieldErr
     return fail(`String should have at most ${DESCRIPTION_MAX_LENGTH} characters`)
   }
   return { value }
-}
-
-interface ProjectAccess {
-  project: MockProjectRecord
-  membership: MockMembershipRecord
-}
-
-/**
- * Contract 1.10 for `/projects/{pid}`: resolve the project to its workspace, then 404 when the
- * project does not exist **or** the user is not a member of its workspace.
- */
-function requireProjectMember(pid: string | readonly string[] | undefined): ProjectAccess | Response {
-  const invalid = invalidUuidParams({ pid })
-  if (invalid) return invalid
-  const user = requireUser()
-  if (user instanceof Response) return user
-  const project = findProject(pid as string)
-  const membership = project ? findMembership(project.workspace_id, user.id) : undefined
-  if (!project || !membership) return errorResponse('not_found', MESSAGES.notFound)
-  return { project, membership }
 }
 
 export const projectHandlers = [

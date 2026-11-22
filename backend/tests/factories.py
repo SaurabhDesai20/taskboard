@@ -2,7 +2,7 @@
 
 import itertools
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -11,8 +11,11 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import ACCESS_TOKEN_COOKIE, create_access_token, hash_password
 from app.models.project import Project
+from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
+from app.repositories import projects as projects_repo
+from app.repositories import tasks as tasks_repo
 from app.services.permissions import Role
 
 DEFAULT_PASSWORD = "correct-horse-battery"
@@ -108,6 +111,49 @@ def create_project(
     db.add(project)
     db.flush()
     return project
+
+
+def create_task(
+    db: Session,
+    project: Project,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    status: TaskStatus = TaskStatus.TODO,
+    priority: TaskPriority = TaskPriority.MEDIUM,
+    position: float | None = None,
+    assignee: User | None = None,
+    due_date: date | None = None,
+    created_by: User | None = None,
+    created_at: datetime | None = None,
+) -> Task:
+    """A task in `project`, numbered from the project's sequence like the API does.
+
+    `position` defaults to the end of its column (last + 1024). `created_at` overrides the
+    database clock, which is frozen for the whole test transaction.
+    """
+    number = projects_repo.take_task_number(db, project)
+    if position is None:
+        last = tasks_repo.last_position(db, project, status)
+        position = 1024.0 if last is None else last + 1024.0
+    task = Task(
+        project_id=project.id,
+        workspace_id=project.workspace_id,
+        number=number,
+        title=title or f"Task {number}",
+        description=description,
+        status=status,
+        priority=priority,
+        position=position,
+        assignee_id=assignee.id if assignee else None,
+        due_date=due_date,
+        created_by=created_by.id if created_by else project.created_by,
+    )
+    if created_at is not None:
+        task.created_at = created_at
+    db.add(task)
+    db.flush()
+    return task
 
 
 @dataclass(frozen=True)

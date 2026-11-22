@@ -1,12 +1,7 @@
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { initialsOf } from '../../lib/initials'
 import './auth.css'
 import { useLogout, useMe } from './hooks'
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  const letters = parts.length > 1 ? [parts[0], parts[parts.length - 1]] : parts
-  return letters.map((part) => [...part][0]?.toUpperCase() ?? '').join('')
-}
 
 /**
  * The signed-in user's menu in the header: a disclosure button (name) that reveals the email

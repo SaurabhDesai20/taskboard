@@ -117,3 +117,55 @@ Run-wide decisions:
 **Open issues**
 - If the project request fails while the project is still in the cached project list, the page shows the cached copy.
 - When a modal closes after a demotion, keyboard focus can land on the page body.
+
+## Phase 4: Tasks and Kanban
+
+**Built**
+- Backend:
+  - `tasks` model and migration (PLAN indexes, unique `(project_id, number)`) and a `projects.next_task_number` counter.
+  - Create, PATCH and move lock the project row (`FOR NO KEY UPDATE`), so task numbers never collide or get reused. A two-connection test and an 8-thread test prove it.
+  - List filters: repeatable `status` and `priority`, `assignee_id` or `none`, `due_before` inclusive, and an escaped ILIKE search `q`.
+  - Move uses the neighbour semantics, validates neighbours, and rebalances a column when gaps get under 1e-6.
+  - `/me/tasks` shows only workspaces you are still a member of and excludes archived projects.
+  - Archived projects return 409 `project_archived`. The assignee must be a workspace member.
+- UI:
+  - dnd-kit Kanban board with optimistic moves that roll back on error, plus a keyboard Move menu fallback.
+  - Cards with priority, assignee initials and overdue styling.
+  - Inline create per column.
+  - A task drawer opened by `?task=<id>` (edits every field; delete with confirmation).
+  - URL-synced filters and a Board/List toggle.
+  - `/me/tasks` grouped into overdue, due this week, later and no due date.
+  - A read-only board for viewers and archived projects.
+  - MSW handlers that share the same ordering math (`ordering.ts`).
+- Sync Point: 10 task-related types are now aliases of the generated ones (`TaskRead`, `TaskCreate`, `TaskUpdate`, `TaskMoveRequest`, `MyTaskRead`, `UserRef`, `ProjectRef`, `WorkspaceRef`, `TaskStatus`, `TaskPriority`).
+
+**Tested**
+- `lint.ps1` is clean.
+- `test.ps1`: 885 backend tests and 483 frontend tests pass.
+- Live smoke check through the Vite proxy: 89/89. It covers:
+  - numbering and defaults;
+  - assignee nesting and the non-member 422;
+  - viewer 403 and member create;
+  - move to the top, between columns, and with an invalid neighbour;
+  - **60 inserts that each halve the gap, which keep exact order with strictly increasing positions (rebalance)**;
+  - every filter, including escaped `%` and `_`;
+  - assignment showing up in the assignee's `/me/tasks`;
+  - PATCH null clearing a field, PATCH status moving the task to the end of the new column, and PATCH title null giving 422;
+  - member delete 403 and admin delete 204;
+  - deleted numbers not reused;
+  - the archived-project 409 and outsider 404s.
+- The Sync check ("drag, refresh, order persists"; "assign, see it under My Tasks") was verified through the API: move, then re-fetch the order, and assign, then fetch `/me/tasks`. A real mouse drag was not tried in a browser; the drag path shares its mutation with the keyboard Move menu, which is tested.
+
+**Decisions**
+- **Type generation:** `gen:api` now runs `openapi-typescript` with `--default-non-nullable false`. Version 7's default made request fields that have defaults (e.g. `TaskCreate.status`) required. All response schemas still mark every field required, which was checked.
+- **Out-of-date neighbours:** a move places the task directly after `after_task_id` (or directly before `before_task_id`).
+- **Archived projects:** any PATCH on a task returns 409, even `{}`.
+- **My Tasks:** shows open tasks only. "Due this week" means today plus the next six days.
+- **Status filter:** hides the board columns it leaves out.
+- **New libraries:** `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` (drag and drop, as named in PLAN.md).
+
+**Open issues**
+- A member who leaves or is removed stays assigned to their tasks (hidden from their `/me/tasks`). Unassigning them on removal is a possible follow-up.
+- On a filtered board, "top of column" means the top of the visible tasks.
+- The drawer doesn't pick up edits made elsewhere while it is open (Phase 8).
+- After deleting a task from the drawer, keyboard focus falls to the page body.

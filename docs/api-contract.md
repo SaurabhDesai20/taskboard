@@ -270,9 +270,12 @@ interface Task {
   created_by: UUID; created_at: Timestamp; updated_at: Timestamp
 }
 
+interface ProjectRef { id: UUID; name: string; key: string }
+interface WorkspaceRef { id: UUID; name: string; slug: string }
+
 interface MyTask extends Task {
-  project: { id: UUID; name: string; key: string }
-  workspace: { id: UUID; name: string; slug: string }
+  project: ProjectRef
+  workspace: WorkspaceRef
 }
 
 interface Comment {
@@ -299,8 +302,10 @@ interface ErrorEnvelope {
 ### 2.2 Notes on shapes
 
 - `Task.position` is a float that orders tasks within a status column (ascending). See `POST /tasks/{tid}/move`.
-- `Task.number` is a per-project sequence starting at 1. It is never reused, even after deletes.
-- `Task.comment_count` counts the task's current comments.
+- `Task.number` is a per-project sequence starting at 1. It is never reused, even after deletes, and a rejected create does not use one up. Concurrent creates in one project always get different numbers.
+- `Task.key` is the project key, a hyphen and the number (e.g. `"WEB-12"`). Project keys are immutable, so a task's key never changes.
+- `Task.comment_count` counts the task's current comments. It is always `0` until Phase 5 adds comments.
+- `Task.updated_at` changes whenever the task's row changes, including when a rebalance renumbers its `position` (see `POST /tasks/{tid}/move`). A request that changes nothing leaves it alone.
 - `Workspace.my_role` is the calling user's role in that workspace. It is included on every workspace response.
 
 ### 2.3 OpenAPI schema names
@@ -322,13 +327,23 @@ The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` w
 | `Project` | `ProjectRead` | `200` of `GET /workspaces/{wid}/projects` (array), `GET`/`PATCH /projects/{pid}`, `POST /projects/{pid}/archive`; `201` of `POST /workspaces/{wid}/projects` | 3 |
 | create-project body | `ProjectCreate` | `POST /workspaces/{wid}/projects` | 3 |
 | update-project body | `ProjectUpdate` | `PATCH /projects/{pid}` | 3 |
+| `Task` | `TaskRead` | `200` of `GET /projects/{pid}/tasks` (array), `GET`/`PATCH /tasks/{tid}`, `POST /tasks/{tid}/move`; `201` of `POST /projects/{pid}/tasks` | 4 |
+| create-task body | `TaskCreate` | `POST /projects/{pid}/tasks` | 4 |
+| update-task body | `TaskUpdate` | `PATCH /tasks/{tid}` | 4 |
+| move-task body | `TaskMoveRequest` | `POST /tasks/{tid}/move` | 4 |
+| `MyTask` | `MyTaskRead` | `200` of `GET /me/tasks` (array) | 4 |
+| `UserRef` | `UserRef` | `TaskRead.assignee` (later also comment authors and activity actors) | 4 |
+| `ProjectRef` | `ProjectRef` | `MyTaskRead.project` | 4 |
+| `WorkspaceRef` | `WorkspaceRef` | `MyTaskRead.workspace` | 4 |
+| `TaskStatus` | `TaskStatus` (string enum) | `TaskRead.status`, `TaskCreate.status`, `TaskUpdate.status`, `TaskMoveRequest.status`, the `status` query filter | 4 |
+| `TaskPriority` | `TaskPriority` (string enum) | `TaskRead.priority`, `TaskCreate.priority`, `TaskUpdate.priority`, the `priority` query filter | 4 |
 | `ErrorEnvelope` | `ErrorEnvelope` (its `error` is `ErrorBody`) | every documented error response, `422` included | 0 |
 | health response | `HealthRead` | `GET /health` | 0 |
 | session cookie | security scheme `CookieAuth` (`apiKey`, in `cookie`, name `access_token`) | every endpoint that requires the cookie | 1 |
 
 - Error responses (including `422`) are documented with `ErrorEnvelope`. FastAPI's default `HTTPValidationError` schema is not used, because the API never returns that shape.
-- Path parameters keep the names used in this document: `wid` (workspace id), `uid` (a member's user id) and `pid` (project id).
-- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role`, `ProjectUpdate.name` are `string`/`Role`, never `null`; `ProjectUpdate.description` is `string | null`).
+- Path parameters keep the names used in this document: `wid` (workspace id), `uid` (a member's user id), `pid` (project id) and `tid` (task id).
+- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role`, `ProjectUpdate.name`, `TaskUpdate.title`, `TaskUpdate.status` and `TaskUpdate.priority` are `string`/enum, never `null`; `ProjectUpdate.description`, `TaskUpdate.description`, `TaskUpdate.assignee_id` and `TaskUpdate.due_date` are nullable).
 - Later phases add rows here as they implement endpoints, following the same pattern: `<Entity>Read` for response objects, `<Entity>Create` / `<Entity>Update` for request bodies, and `<Action>Request` for action bodies.
 
 ---
@@ -638,19 +653,30 @@ Errors: `404`, then `403`, then `409` with `details.reason = "already_archived"`
 
 ---
 
-### 3.6 Tasks (Phase 4; `comment_count` is real from Phase 5)
+### 3.6 Tasks (Phase 4, implemented; `comment_count` is real from Phase 5)
+
+- `/projects/{pid}/tasks` follows the `404` and malformed-id rules of 3.5 (message `"Project not found"`, `field: "pid"`).
+- Every `/tasks/{tid}` endpoint returns `404 not_found` with message `"Task not found"` when the task does not exist or the caller is not a member of its workspace, and `422` (`field: "tid", location: "path"`) for a malformed id. A task of another workspace gets exactly the same `404` as an id that does not exist.
+- Roles always come from the task's (project's) own workspace. A `403` has message `"Only owners, admins and members can create or edit tasks"` (`task.write`: create, update, move) or `"Only owners and admins can delete tasks"` (`task.delete`).
+- Checks run in this order: `404`, `403`, request validation `422`, `409 project_archived`, then business `422`s (assignee, neighbours).
+- Archived projects: create, update (any body, even `{}`) and move return `409` with `details.reason = "project_archived"` and message `"This project is archived, so its tasks are read-only"`. Reading and deleting still work.
+- Field rules (section 1.8): `title` and `description` are trimmed; a blank `description` is stored as `""`, `null` means none. Unknown and server-controlled fields in a body (`number`, `key`, `position`, `project_id`, `workspace_id`, `created_by`, `comment_count`, ...) are ignored.
+- Assignee rule: `assignee_id` must be a member of the task's workspace, with any role (viewers can be assigned). Otherwise `422` with `field: "assignee_id"`, message `"Assignee must be a member of this workspace"`. A task keeps its assignee if that user later leaves the workspace; it then no longer appears in their `GET /me/tasks`.
+- The server serializes concurrent writes to the tasks of one project, so numbers, positions and the archived check stay consistent.
 
 #### `GET /projects/{pid}/tasks` (viewer)
 
-Returns **all** matching tasks (not paginated), ordered by status (`todo`, `in_progress`, `in_review`, `done`) then `position` ascending.
+Returns **all** matching tasks of the project (not paginated), ordered by status (`todo`, `in_progress`, `in_review`, `done`), then `position` ascending, then `number` (so equal positions still list in a stable order). `[]` when there are none.
 
 | Query param | Type | Meaning |
 |---|---|---|
 | `status` | `TaskStatus`, repeatable | `?status=todo&status=done` |
-| `assignee_id` | UUID or `none` | `none` = unassigned |
+| `assignee_id` | UUID or `none` | `none` = unassigned. A user who is not a member just matches nothing. |
 | `priority` | `TaskPriority`, repeatable | |
 | `due_before` | date | `due_date` on or before this date (inclusive); excludes tasks without a due date |
-| `q` | string, 1 to 200 chars | Case-insensitive substring match on `title` or `description` |
+| `q` | string, 1 to 200 chars after trimming | Case-insensitive substring match on `title` or `description`. `%`, `_` and `\` match literally. |
+
+Different filters combine with AND; repeated values of one filter combine with OR. Unknown query parameters are ignored.
 
 `200`:
 
@@ -695,11 +721,11 @@ Returns **all** matching tasks (not paginated), ordered by status (`todo`, `in_p
 ]
 ```
 
-Errors: `404`, `422` (bad enum, bad date, bad UUID).
+Errors: `404`, `422` (`location: "query"`): a bad `status` or `priority` value reports its index (`field: "status.1"` for the second value); a bad `assignee_id` has message `"Input should be a valid UUID or 'none'"` (`none` is case-sensitive); a bad `due_before`; an empty, blank or too long `q`.
 
 #### `POST /projects/{pid}/tasks` (member)
 
-Only `title` is required. Defaults: `status = "todo"`, `priority = "medium"`. The new task goes to the **end** of its status column (`position` = last position + 1024, or 1024 in an empty column). Request:
+Only `title` is required. Defaults: `status = "todo"`, `priority = "medium"`; `description`, `assignee_id` and `due_date` may be omitted or `null`. `"status": null` or `"priority": null` is a `422`. The new task gets the project's next `number` and goes to the **end** of its status column (`position` = last position + 1024, or 1024 in an empty column). `created_by` is the caller. Request:
 
 ```json
 {
@@ -714,32 +740,41 @@ Only `title` is required. Defaults: `status = "todo"`, `priority = "medium"`. Th
 
 `201`: the new `Task` (same shape as the list items).
 
-Errors:
-- `422` with `field: "assignee_id"`, message `"Assignee must be a member of this workspace"`.
+Errors, in the order they are checked:
+- `404`, then `403`.
+- `422` for an invalid body.
 - `409 project_archived`.
-- `403`, `404`, `422`.
+- `422` on `assignee_id` (the assignee rule above).
 
 #### `GET /tasks/{tid}` (viewer)
 
-`200`: a `Task`. Errors: `404`.
+`200`: a `Task`, also in an archived project. Errors: `404`.
 
 #### `PATCH /tasks/{tid}` (member)
 
-Any subset of `title`, `description`, `status`, `priority`, `assignee_id`, `due_date`. A `status` change through PATCH moves the task to the end of the new column; use `/move` to control the exact place. Request:
+Any subset of `title`, `description`, `status`, `priority`, `assignee_id`, `due_date`, partial per 1.7:
+
+- Omitted fields stay unchanged. `null` clears `description`, `assignee_id` and `due_date`; `null` for `title`, `status` or `priority` is a `422`.
+- `{}`, or values equal to the current ones, returns the task unchanged (`updated_at` included).
+- A `status` change through PATCH moves the task to the end of the new column; the same status keeps its position. Use `/move` to control the exact place.
+- The assignee rule applies only to a **new** `assignee_id`, so editing a task whose assignee has left the workspace still works.
+- A rejected PATCH changes nothing, not even its valid fields.
+
+Request:
 
 ```json
 { "priority": "urgent", "assignee_id": null, "due_date": "2026-12-03" }
 ```
 
-`200`: the updated `Task`. Errors: `422` (including the assignee rule), `409 project_archived`, `403`, `404`.
+`200`: the updated `Task`. Errors, in the order they are checked: `404`, `403`, `422` (body), `409 project_archived`, `422` (assignee rule).
 
 #### `DELETE /tasks/{tid}` (admin)
 
-`204`. Deletes the task and its comments; its activity entries remain (see 3.8). Errors: `403`, `404`.
+`204`. Deletes the task and its comments; its activity entries remain (see 3.8). Allowed in archived projects. Members cannot delete tasks, not even their own. The task's `number` is not reused. Errors: `404` (also for a task that is already deleted), `403`.
 
 #### `POST /tasks/{tid}/move` (member)
 
-Moves a task within its column or to another column. The client sends the neighbours the task should have **after** the drop, in the target column. The moved task is placed **after** `after_task_id` and **before** `before_task_id`.
+Moves a task within its column or to another column. `status` is required (the target column, which may be the current one); both neighbour ids are optional (omitted or `null`). The client sends the neighbours the task should have **after** the drop, in the target column. The moved task is placed **after** `after_task_id` and **before** `before_task_id`.
 
 | `after_task_id` | `before_task_id` | Result |
 |---|---|---|
@@ -761,14 +796,16 @@ Request (drop "Fix login redirect" into In Review, between WEB-5 and WEB-3):
 `200`: the moved `Task` with its new `status` and `position`.
 
 Notes:
-- When the gap between neighbours gets too small, the server rebalances the whole column in the same transaction (positions 1024, 2048, ... in current order). Other tasks' positions may change, so after a move the UI invalidates the project's task list query instead of patching other tasks.
-- Both neighbours must be tasks of the same project, already in the target `status`, and not the moved task itself. Otherwise `422` on `after_task_id` / `before_task_id`.
+- When the gap between the neighbours is below `1e-6` (or they share a position), the server rebalances the whole target column in the same transaction: positions 1024, 2048, ... in the current order, with the moved task in its requested place. Other tasks' positions (and their `updated_at`) may change, so after a move the UI invalidates the project's task list query instead of patching other tasks. Other columns never change.
+- Both neighbours must be tasks of the same project, already in the target `status`, and not the moved task itself. Otherwise `422` on `after_task_id` / `before_task_id` with message `"Must be another task of this project with the target status"` (the same message for a missing task, one of another project or workspace, and the task itself). Both fields are reported when both are wrong.
+- When both are given, `before_task_id` must come after `after_task_id` in the column (they need not be adjacent). Otherwise (including the same id twice) `422` on `before_task_id`, message `"Must come after after_task_id in the target column"`.
+- If the column changed since the client loaded it, the task goes **directly after** `after_task_id` (or, with only `before_task_id`, **directly before** it), between it and its current neighbour, and never takes another task's position. With an up-to-date column this is exactly the table above.
 
-Errors: `409 project_archived`, `403`, `404`, `422`.
+Errors, in the order they are checked: `404`, `403`, `422` (body), `409 project_archived`, `422` (neighbours). A failed move changes nothing.
 
 #### `GET /me/tasks` (auth)
 
-Tasks assigned to the current user across all their workspaces, excluding archived projects. Not paginated. Ordered by `due_date` ascending (no due date last), then `created_at`. Query: `status` (repeatable) and `due_before` (as in the project task list).
+Tasks assigned to the current user in the workspaces they are **currently** a member of (any role), excluding archived projects. A task still assigned to the user in a workspace they have left is not returned. Not paginated. Ordered by `due_date` ascending (no due date last), then `created_at`, then `id`. `[]` when there are none. Query: `status` (repeatable) and `due_before`, validated as in the project task list; other parameters are ignored.
 
 `200`: `MyTask[]`, a `Task` plus `project` and `workspace` summaries:
 

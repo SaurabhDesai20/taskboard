@@ -131,3 +131,46 @@ export type ProjectCreate = Schemas['ProjectCreate']
 export type ProjectUpdate = Schemas['ProjectUpdate']
 
 export type Project = ProjectRead
+
+// ---------------------------------------------------------------------------------------------
+// Tasks (contract 3.6): generated
+// ---------------------------------------------------------------------------------------------
+
+/** Calendar date `YYYY-MM-DD`, no time or zone (contract 1.2): `due_date`, `due_before`. */
+export type DateOnly = string
+
+/** Task column (contract 1.9), in board order. */
+export type TaskStatus = Schemas['TaskStatus']
+
+/** Task priority (contract 1.9), lowest first. */
+export type TaskPriority = Schemas['TaskPriority']
+
+/** A user as embedded in other objects (`Task.assignee`, activity actors). */
+export type UserRef = Schemas['UserRef']
+
+/** A project summary (`MyTask.project`, activity metadata). */
+export type ProjectRef = Schemas['ProjectRef']
+
+/** A workspace summary (`MyTask.workspace`). */
+export type WorkspaceRef = Schemas['WorkspaceRef']
+
+/** Backend `TaskRead`: the contract's `Task`. `position` orders tasks within a status column. */
+export type TaskRead = Schemas['TaskRead']
+
+/** Backend `TaskCreate`: body of `POST /projects/{pid}/tasks`. Only `title` is required. */
+export type TaskCreate = Schemas['TaskCreate']
+
+/** Backend `TaskUpdate`: body of `PATCH /tasks/{tid}`. Partial; `null` clears a nullable field. */
+export type TaskUpdate = Schemas['TaskUpdate']
+
+/**
+ * Backend `TaskMoveRequest`: body of `POST /tasks/{tid}/move`. The neighbours the task should
+ * have after the drop, in the target column: placed after `after_task_id`, before `before_task_id`.
+ */
+export type TaskMoveRequest = Schemas['TaskMoveRequest']
+
+/** Backend `MyTaskRead`: an item of `GET /me/tasks`, a task plus its project and workspace. */
+export type MyTaskRead = Schemas['MyTaskRead']
+
+export type Task = TaskRead
+export type MyTask = MyTaskRead

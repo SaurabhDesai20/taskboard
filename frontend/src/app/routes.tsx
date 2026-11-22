@@ -2,8 +2,9 @@ import type { RouteObject } from 'react-router'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RegisterPage } from '../features/auth/RegisterPage'
 import { RequireAuth, RequireGuest } from '../features/auth/RouteGuards'
-import { ProjectBoardPage } from '../features/projects/ProjectBoardPage'
 import { ProjectLayout } from '../features/projects/ProjectLayout'
+import { MyTasksPage } from '../features/tasks/MyTasksPage'
+import { ProjectTasksPage } from '../features/tasks/ProjectTasksPage'
 import { WorkspaceHomePage } from '../features/workspaces/WorkspaceHomePage'
 import { WorkspaceLayout, WorkspaceRoute } from '../features/workspaces/WorkspaceLayout'
 import { WorkspaceSettingsPage } from '../features/workspaces/WorkspaceSettingsPage'
@@ -30,6 +31,8 @@ export const routes: RouteObject[] = [
         element: <RequireAuth />,
         children: [
           { index: true, element: <WorkspacesPage /> },
+          // Tasks assigned to me across workspaces.
+          { path: 'me/tasks', element: <MyTasksPage /> },
           {
             // The slug is resolved to a workspace (and the user's role) via GET /workspaces.
             path: 'w/:slug',
@@ -45,9 +48,10 @@ export const routes: RouteObject[] = [
               },
               {
                 // Breadcrumbs, project sidebar and the project. The id is the project's UUID.
+                // The board takes ?status, ?priority, ?assignee, ?due_before, ?q, ?view and ?task.
                 path: 'projects/:projectId',
                 element: <ProjectLayout />,
-                children: [{ index: true, element: <ProjectBoardPage /> }],
+                children: [{ index: true, element: <ProjectTasksPage /> }],
               },
             ],
           },

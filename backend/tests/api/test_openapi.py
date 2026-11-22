@@ -160,6 +160,136 @@ def test_project_shapes_match_the_contract(openapi: dict[str, Any]) -> None:
     assert {"type": "null"} in update["properties"]["description"]["anyOf"]
 
 
+def test_task_schema_names(openapi: dict[str, Any]) -> None:
+    paths = openapi["paths"]
+    collection = paths["/api/projects/{pid}/tasks"]
+    item = paths["/api/tasks/{tid}"]
+    move = paths["/api/tasks/{tid}/move"]["post"]
+
+    assert _array_item_ref(collection["get"]["responses"]["200"]) == "TaskRead"
+    assert _ref(collection["post"]["requestBody"]) == "TaskCreate"
+    assert _ref(collection["post"]["responses"]["201"]) == "TaskRead"
+    assert _ref(item["get"]["responses"]["200"]) == "TaskRead"
+    assert _ref(item["patch"]["requestBody"]) == "TaskUpdate"
+    assert _ref(item["patch"]["responses"]["200"]) == "TaskRead"
+    assert "content" not in item["delete"]["responses"]["204"]
+    assert _ref(move["requestBody"]) == "TaskMoveRequest"
+    assert _ref(move["responses"]["200"]) == "TaskRead"
+    my_tasks = paths["/api/me/tasks"]["get"]
+    assert _array_item_ref(my_tasks["responses"]["200"]) == "MyTaskRead"
+    assert my_tasks["security"] == [{"CookieAuth": []}]
+    for operation in (item["get"], item["patch"], item["delete"], move):
+        assert [(p["name"], p["in"]) for p in operation["parameters"]] == [("tid", "path")]
+    for status in ("403", "404", "409", "422"):
+        assert _ref(move["responses"][status]) == "ErrorEnvelope"
+
+
+def test_task_list_query_parameters(openapi: dict[str, Any]) -> None:
+    def query(path: str) -> dict[str, dict[str, Any]]:
+        parameters = openapi["paths"][path]["get"]["parameters"]
+        return {p["name"]: p for p in parameters if p["in"] == "query"}
+
+    tasks = query("/api/projects/{pid}/tasks")
+    mine = query("/api/me/tasks")
+
+    assert list(tasks) == ["status", "priority", "assignee_id", "due_before", "q"]
+    assert list(mine) == ["status", "due_before"]
+    assert all(p["required"] is False for p in [*tasks.values(), *mine.values()])
+    for name, enum in (("status", "TaskStatus"), ("priority", "TaskPriority")):
+        array = tasks[name]["schema"]["anyOf"][0]
+        assert array == {"type": "array", "items": {"$ref": f"#/components/schemas/{enum}"}}
+    assert mine["status"]["schema"] == tasks["status"]["schema"]
+    assert tasks["assignee_id"]["schema"]["anyOf"][:2] == [
+        {"type": "string", "format": "uuid"},
+        {"type": "string", "enum": ["none"]},
+    ]
+    assert tasks["due_before"]["schema"]["anyOf"][0] == {"type": "string", "format": "date"}
+    q = tasks["q"]["schema"]["anyOf"][0]
+    assert (q["minLength"], q["maxLength"]) == (1, 200)
+
+
+def test_task_shapes_match_the_contract(openapi: dict[str, Any]) -> None:
+    schemas = openapi["components"]["schemas"]
+    task_fields = {
+        "id",
+        "project_id",
+        "workspace_id",
+        "number",
+        "key",
+        "title",
+        "description",
+        "status",
+        "priority",
+        "position",
+        "assignee",
+        "due_date",
+        "comment_count",
+        "created_by",
+        "created_at",
+        "updated_at",
+    }
+    read_fields = {
+        "TaskRead": task_fields,
+        "MyTaskRead": task_fields | {"project", "workspace"},
+        "UserRef": {"id", "name"},
+        "ProjectRef": {"id", "name", "key"},
+        "WorkspaceRef": {"id", "name", "slug"},
+    }
+    for name, fields in read_fields.items():
+        assert set(schemas[name]["properties"]) == fields, name
+        assert set(schemas[name]["required"]) == fields, name
+
+    read = schemas["TaskRead"]["properties"]
+    for nullable in ("description", "due_date"):
+        assert {"type": "null"} in read[nullable]["anyOf"]
+    assert read["assignee"]["anyOf"] == [
+        {"$ref": "#/components/schemas/UserRef"},
+        {"type": "null"},
+    ]
+    assert read["status"] == {"$ref": "#/components/schemas/TaskStatus"}
+    assert read["priority"] == {"$ref": "#/components/schemas/TaskPriority"}
+    assert read["position"]["type"] == "number"
+    my_task = schemas["MyTaskRead"]["properties"]
+    assert my_task["project"] == {"$ref": "#/components/schemas/ProjectRef"}
+    assert my_task["workspace"] == {"$ref": "#/components/schemas/WorkspaceRef"}
+
+    create = schemas["TaskCreate"]
+    assert set(create["properties"]) == {
+        "title",
+        "description",
+        "status",
+        "priority",
+        "assignee_id",
+        "due_date",
+    }
+    assert create["required"] == ["title"]
+    assert create["properties"]["status"]["default"] == "todo"
+    assert create["properties"]["priority"]["default"] == "medium"
+
+    # PATCH: everything optional; only description, assignee_id and due_date are nullable.
+    update = schemas["TaskUpdate"]
+    assert set(update["properties"]) == set(create["properties"])
+    assert "required" not in update
+    assert update["properties"]["title"]["type"] == "string"
+    assert update["properties"]["status"] == {"$ref": "#/components/schemas/TaskStatus"}
+    assert update["properties"]["priority"] == {"$ref": "#/components/schemas/TaskPriority"}
+    for nullable in ("description", "assignee_id", "due_date"):
+        assert {"type": "null"} in update["properties"][nullable]["anyOf"]
+
+    move = schemas["TaskMoveRequest"]
+    assert set(move["properties"]) == {"status", "after_task_id", "before_task_id"}
+    assert move["required"] == ["status"]
+
+
+def test_task_enums_are_named_schemas(openapi: dict[str, Any]) -> None:
+    schemas = openapi["components"]["schemas"]
+
+    assert schemas["TaskStatus"]["type"] == "string"
+    assert schemas["TaskStatus"]["enum"] == ["todo", "in_progress", "in_review", "done"]
+    assert schemas["TaskPriority"]["type"] == "string"
+    assert schemas["TaskPriority"]["enum"] == ["low", "medium", "high", "urgent"]
+
+
 def test_role_enum_is_a_named_schema(openapi: dict[str, Any]) -> None:
     role = openapi["components"]["schemas"]["Role"]
 

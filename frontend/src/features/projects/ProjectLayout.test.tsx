@@ -26,7 +26,7 @@ function sidebarProjects() {
 }
 
 describe('project layout', () => {
-  it('shows breadcrumbs, the sidebar with the current project, the header and the board placeholder', async () => {
+  it('shows breadcrumbs, the sidebar with the current project, the header and the task board', async () => {
     renderProjectAs('ben', website.id)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Website' })).toBeInTheDocument()
@@ -52,8 +52,8 @@ describe('project layout', () => {
     expect(screen.getByText('Marketing site and signup flow')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1 }).parentElement).toHaveTextContent('WebsiteKey: WEB')
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
-    const board = screen.getByRole('region', { name: 'Board' })
-    expect(within(board).getByText('No tasks yet')).toBeInTheDocument()
+    const tasks = screen.getByRole('region', { name: 'Tasks' })
+    expect(await within(tasks).findByRole('region', { name: 'To Do' })).toBeInTheDocument()
   })
 
   it('moves between projects from the sidebar', async () => {
@@ -162,7 +162,7 @@ describe('project not found', () => {
         ['Website', null],
       ]),
     )
-    expect(screen.queryByRole('region', { name: 'Board' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Tasks' })).not.toBeInTheDocument()
   })
 
   it('shows "Workspace not found" for a workspace I am not in', async () => {

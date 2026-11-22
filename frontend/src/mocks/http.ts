@@ -5,9 +5,11 @@ import type { ApiErrorCode, ApiErrorEnvelope, ApiErrorReason, FieldError, Role }
 import { ROLES } from '../lib/permissions'
 import {
   findMembership,
+  findProject,
   findWorkspace,
   sessionUser,
   type MockMembershipRecord,
+  type MockProjectRecord,
   type MockUserRecord,
   type MockWorkspaceRecord,
 } from './db'
@@ -110,6 +112,26 @@ export function requireWorkspaceMember(wid: string | readonly string[] | undefin
   const membership = workspace ? findMembership(workspace.id, user.id) : undefined
   if (!workspace || !membership) return errorResponse('not_found', 'Workspace not found')
   return { user, workspace, membership }
+}
+
+export interface ProjectAccess {
+  project: MockProjectRecord
+  membership: MockMembershipRecord
+}
+
+/**
+ * Contract 1.10 for `/projects/{pid}`: resolve the project to its workspace, then 404 when the
+ * project does not exist **or** the user is not a member of its workspace.
+ */
+export function requireProjectMember(pid: string | readonly string[] | undefined): ProjectAccess | Response {
+  const invalid = invalidUuidParams({ pid })
+  if (invalid) return invalid
+  const user = requireUser()
+  if (user instanceof Response) return user
+  const project = findProject(pid as string)
+  const membership = project ? findMembership(project.workspace_id, user.id) : undefined
+  if (!project || !membership) return errorResponse('not_found', 'Project not found')
+  return { project, membership }
 }
 
 /** Reads a required `role` body field. Returns the role, or the 422 entry to report. */

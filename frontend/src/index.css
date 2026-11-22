@@ -502,3 +502,58 @@ a {
 .notice:focus {
   outline: none;
 }
+
+/* Header links (My tasks) */
+
+.app-header__link {
+  padding: 0.25rem 0.5rem;
+  font-weight: 500;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius);
+}
+
+.app-header__link:hover {
+  background-color: var(--color-bg);
+}
+
+.app-header__link[aria-current='page'] {
+  color: var(--color-primary);
+  background-color: #ddf4ff;
+}
+
+/* Modal as a drawer: a full-height panel on the right */
+
+.modal-backdrop--drawer {
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.modal--drawer {
+  position: relative;
+  max-width: 36rem;
+  min-height: 100%;
+  border-radius: 0;
+  overflow-y: auto;
+}
+
+/* Avatar: a person's initials in a circle (components/Avatar.tsx) */
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  background-color: var(--color-primary);
+  border-radius: 50%;
+}
+
+.avatar--small {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.625rem;
+}

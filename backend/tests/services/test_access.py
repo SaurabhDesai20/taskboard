@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.errors import Forbidden, NotFound
-from app.services.access import denied_message, project_access, workspace_access
+from app.services.access import denied_message, project_access, task_access, workspace_access
 from app.services.permissions import ACTIONS, Action, Role, can
-from tests.factories import create_project, create_team
+from tests.factories import create_project, create_task, create_team
 
 
 @pytest.mark.parametrize("role", list(Role))
@@ -95,10 +95,50 @@ def test_project_access_hides_missing_and_foreign_projects(db_session: Session) 
         assert exc_info.value.details == {}
 
 
+@pytest.mark.parametrize("role", list(Role))
+@pytest.mark.parametrize("action", ACTIONS)
+def test_task_access_applies_the_role_in_the_tasks_workspace(
+    db_session: Session, role: Role, action: Action
+) -> None:
+    team = create_team(db_session)
+    project = create_project(db_session, team.workspace)
+    task = create_task(db_session, project)
+    user = team.users[role]
+
+    if can(role, action):
+        access = task_access(db_session, task.id, user.id, action)
+        assert access.task is task
+        assert access.project is project
+        assert access.user_id == user.id
+        assert access.role is role
+    else:
+        with pytest.raises(Forbidden) as exc_info:
+            task_access(db_session, task.id, user.id, action)
+        assert exc_info.value.details == {"reason": "insufficient_role"}
+
+
+def test_task_access_hides_missing_and_foreign_tasks(db_session: Session) -> None:
+    team = create_team(db_session)
+    other = create_team(db_session)
+    foreign = create_task(db_session, create_project(db_session, other.workspace))
+    own = create_task(db_session, create_project(db_session, team.workspace))
+
+    for task_id, user_id in [
+        (uuid.uuid4(), team.owner.id),
+        (foreign.id, team.owner.id),
+        (own.id, team.outsider.id),
+    ]:
+        with pytest.raises(NotFound) as exc_info:
+            task_access(db_session, task_id, user_id, "workspace.view")
+        assert exc_info.value.message == "Task not found"
+        assert exc_info.value.details == {}
+
+
 @pytest.mark.parametrize(
     ("action", "message"),
     [
         ("task.write", "Only owners, admins and members can create or edit tasks"),
+        ("task.delete", "Only owners and admins can delete tasks"),
         ("member.manage", "Only owners and admins can add, remove or change members"),
         ("workspace.manage", "Only owners can rename or delete the workspace"),
     ],

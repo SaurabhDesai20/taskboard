@@ -26,13 +26,15 @@ interface ModalProps {
   initialFocusRef?: RefObject<HTMLElement | null>
   /** Focused after the modal closes. Defaults to whatever had focus when it opened. */
   returnFocusRef?: RefObject<HTMLElement | null>
+  /** `drawer`: a full-height panel on the right (e.g. task details) instead of a centered box. */
+  variant?: 'dialog' | 'drawer'
 }
 
 /**
  * An accessible modal dialog, rendered while mounted (open it by rendering it): focus moves in,
  * Tab and Shift+Tab stay inside, Escape closes, and focus returns to where it came from.
  */
-export function Modal({ title, onClose, children, initialFocusRef, returnFocusRef }: ModalProps) {
+export function Modal({ title, onClose, children, initialFocusRef, returnFocusRef, variant = 'dialog' }: ModalProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   // Read during the first render, before anything inside the modal can take focus.
@@ -87,10 +89,10 @@ export function Modal({ title, onClose, children, initialFocusRef, returnFocusRe
   }
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={handleBackdropMouseDown}>
+    <div className={`modal-backdrop modal-backdrop--${variant}`} onMouseDown={handleBackdropMouseDown}>
       <div
         ref={dialogRef}
-        className="modal"
+        className={`modal modal--${variant}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -13,7 +13,25 @@
 //
 // Projects: Acme has Website (WEB), Mobile App (APP) and the archived Legacy CRM (CRM);
 // Globex has Operations (OPS).
-import type { Project, Role, User, UUID, Workspace } from '../api/types'
+//
+// Tasks (due dates relative to the day the mock is reset, so "overdue" always means something):
+//
+// | Task | Column | Priority | Assignee | Due |
+// |---|---|---|---|---|
+// | WEB-2 Write onboarding copy | To Do | Medium | - | - |
+// | WEB-3 Design pricing page | To Do | High | Asha | today - 2 (overdue) |
+// | WEB-4 Set up analytics | To Do | Low | Dana | today + 3 |
+// | WEB-1 Fix login redirect | In Progress | High | Ben | today + 9 |
+// | WEB-7 Accessibility audit | In Progress | Medium | Asha | today + 20 |
+// | WEB-5 Review signup form | In Review | Urgent | Asha | today |
+// | WEB-6 Launch announcement | Done | Medium | Ben | today - 5 (done, so not overdue) |
+// | APP-1 Push notifications | To Do | Medium | Asha | - |
+// | APP-2 Offline mode | In Progress | High | Ben | today + 5 |
+// | CRM-1 Export customer data | To Do | Low | Asha | today - 10 (archived project) |
+// | OPS-1 Rotate API keys | To Do | Urgent | Asha | today - 1 (overdue) |
+// | OPS-2 Update runbook | In Review | Low | Ben | - |
+import type { DateOnly, Project, Role, Task, TaskPriority, TaskStatus, User, UUID, Workspace } from '../api/types'
+import { addDays, todayDateOnly } from '../lib/dates'
 import { ROLES } from '../lib/permissions'
 
 export interface MockUserRecord extends User {
@@ -136,22 +154,260 @@ export const MOCK_PROJECTS = {
   },
 } as const satisfies Record<string, MockProjectRecord>
 
+/** A task as stored: the assignee by id (the API embeds `{ id, name }`), the key derived. */
+export interface MockTaskRecord {
+  id: UUID
+  project_id: UUID
+  workspace_id: UUID
+  number: number
+  title: string
+  description: string | null
+  status: TaskStatus
+  priority: TaskPriority
+  position: number
+  assignee_id: UUID | null
+  due_date: DateOnly | null
+  comment_count: number
+  created_by: UUID
+  created_at: string
+  updated_at: string
+}
+
+const taskId = (n: number) => `40000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+
+/** Ids of the seeded tasks (see the table at the top). */
+export const MOCK_TASK_IDS = {
+  web1: taskId(1),
+  web2: taskId(2),
+  web3: taskId(3),
+  web4: taskId(4),
+  web5: taskId(5),
+  web6: taskId(6),
+  web7: taskId(7),
+  app1: taskId(8),
+  app2: taskId(9),
+  crm1: taskId(10),
+  ops1: taskId(11),
+  ops2: taskId(12),
+} as const
+
+interface SeedTask {
+  id: UUID
+  project: MockProjectRecord
+  number: number
+  title: string
+  description?: string
+  status: TaskStatus
+  priority: TaskPriority
+  position: number
+  assignee?: MockUserRecord
+  /** Days from today; no due date when left out. */
+  dueInDays?: number
+  commentCount?: number
+  createdAt: string
+}
+
+function seedTasks(): MockTaskRecord[] {
+  const { website, mobile, legacy, operations } = MOCK_PROJECTS
+  const { asha, ben, dana } = MOCK_USERS
+  const ids = MOCK_TASK_IDS
+  const today = todayDateOnly()
+  const seeds: SeedTask[] = [
+    {
+      id: ids.web1,
+      project: website,
+      number: 1,
+      title: 'Fix login redirect',
+      description: 'After login users land on /404 instead of the dashboard.',
+      status: 'in_progress',
+      priority: 'high',
+      position: 1024,
+      assignee: ben,
+      dueInDays: 9,
+      commentCount: 2,
+      createdAt: '2026-11-22T09:20:00Z',
+    },
+    {
+      id: ids.web2,
+      project: website,
+      number: 2,
+      title: 'Write onboarding copy',
+      status: 'todo',
+      priority: 'medium',
+      position: 1024,
+      createdAt: '2026-11-22T09:21:00Z',
+    },
+    {
+      id: ids.web3,
+      project: website,
+      number: 3,
+      title: 'Design pricing page',
+      status: 'todo',
+      priority: 'high',
+      position: 2048,
+      assignee: asha,
+      dueInDays: -2,
+      createdAt: '2026-11-22T09:22:00Z',
+    },
+    {
+      id: ids.web4,
+      project: website,
+      number: 4,
+      title: 'Set up analytics',
+      status: 'todo',
+      priority: 'low',
+      position: 3072,
+      assignee: dana,
+      dueInDays: 3,
+      createdAt: '2026-11-22T09:23:00Z',
+    },
+    {
+      id: ids.web5,
+      project: website,
+      number: 5,
+      title: 'Review signup form',
+      status: 'in_review',
+      priority: 'urgent',
+      position: 1024,
+      assignee: asha,
+      dueInDays: 0,
+      createdAt: '2026-11-22T09:24:00Z',
+    },
+    {
+      id: ids.web6,
+      project: website,
+      number: 6,
+      title: 'Launch announcement',
+      status: 'done',
+      priority: 'medium',
+      position: 1024,
+      assignee: ben,
+      dueInDays: -5,
+      createdAt: '2026-11-22T09:25:00Z',
+    },
+    {
+      id: ids.web7,
+      project: website,
+      number: 7,
+      title: 'Accessibility audit',
+      description: 'Keyboard and screen reader pass over the signup flow.',
+      status: 'in_progress',
+      priority: 'medium',
+      position: 2048,
+      assignee: asha,
+      dueInDays: 20,
+      createdAt: '2026-11-22T09:26:00Z',
+    },
+    {
+      id: ids.app1,
+      project: mobile,
+      number: 1,
+      title: 'Push notifications',
+      status: 'todo',
+      priority: 'medium',
+      position: 1024,
+      assignee: asha,
+      createdAt: '2026-11-22T09:30:00Z',
+    },
+    {
+      id: ids.app2,
+      project: mobile,
+      number: 2,
+      title: 'Offline mode',
+      status: 'in_progress',
+      priority: 'high',
+      position: 1024,
+      assignee: ben,
+      dueInDays: 5,
+      createdAt: '2026-11-22T09:31:00Z',
+    },
+    {
+      id: ids.crm1,
+      project: legacy,
+      number: 1,
+      title: 'Export customer data',
+      status: 'todo',
+      priority: 'low',
+      position: 1024,
+      assignee: asha,
+      dueInDays: -10,
+      createdAt: '2026-11-22T09:32:00Z',
+    },
+    {
+      id: ids.ops1,
+      project: operations,
+      number: 1,
+      title: 'Rotate API keys',
+      status: 'todo',
+      priority: 'urgent',
+      position: 1024,
+      assignee: asha,
+      dueInDays: -1,
+      createdAt: '2026-11-22T09:33:00Z',
+    },
+    {
+      id: ids.ops2,
+      project: operations,
+      number: 2,
+      title: 'Update runbook',
+      status: 'in_review',
+      priority: 'low',
+      position: 1024,
+      assignee: ben,
+      createdAt: '2026-11-22T09:34:00Z',
+    },
+  ]
+  return seeds.map((seed) => ({
+    id: seed.id,
+    project_id: seed.project.id,
+    workspace_id: seed.project.workspace_id,
+    number: seed.number,
+    title: seed.title,
+    description: seed.description ?? null,
+    status: seed.status,
+    priority: seed.priority,
+    position: seed.position,
+    assignee_id: seed.assignee?.id ?? null,
+    due_date: seed.dueInDays === undefined ? null : addDays(today, seed.dueInDays),
+    comment_count: seed.commentCount ?? 0,
+    created_by: seed.project.created_by,
+    created_at: seed.createdAt,
+    updated_at: seed.createdAt,
+  }))
+}
+
 interface MockDb {
   users: MockUserRecord[]
   workspaces: MockWorkspaceRecord[]
   members: MockMembershipRecord[]
   projects: MockProjectRecord[]
+  tasks: MockTaskRecord[]
+  /** The last task number used per project id (numbers are never reused). */
+  taskNumbers: Record<UUID, number>
   /** Stands in for the httpOnly session cookie: the id of the signed-in user, or null. */
   sessionUserId: string | null
 }
 
-export const db: MockDb = { users: [], workspaces: [], members: [], projects: [], sessionUserId: null }
+export const db: MockDb = {
+  users: [],
+  workspaces: [],
+  members: [],
+  projects: [],
+  tasks: [],
+  taskNumbers: {},
+  sessionUserId: null,
+}
 
 export function resetMockDb(): void {
   db.users = Object.values(MOCK_USERS).map((user) => ({ ...user }))
   db.workspaces = Object.values(MOCK_WORKSPACES).map((workspace) => ({ ...workspace }))
   db.members = seedMembers()
   db.projects = Object.values(MOCK_PROJECTS).map((project) => ({ ...project }))
+  db.tasks = seedTasks()
+  db.taskNumbers = {}
+  for (const task of db.tasks) {
+    db.taskNumbers[task.project_id] = Math.max(db.taskNumbers[task.project_id] ?? 0, task.number)
+  }
   db.sessionUserId = null
 }
 
@@ -238,6 +494,7 @@ export function deleteWorkspace(id: UUID): void {
   db.workspaces = db.workspaces.filter((workspace) => workspace.id !== id)
   db.members = db.members.filter((member) => member.workspace_id !== id)
   db.projects = db.projects.filter((project) => project.workspace_id !== id)
+  db.tasks = db.tasks.filter((task) => task.workspace_id !== id)
 }
 
 export function removeMembership(workspaceId: UUID, userId: UUID): void {
@@ -289,4 +546,54 @@ export function createProject(
   }
   db.projects.push(project)
   return project
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------------------------
+
+export function findTask(id: UUID): MockTaskRecord | undefined {
+  return db.tasks.find((task) => task.id === id)
+}
+
+/** Every task of a project, in no particular order. */
+export function tasksOf(projectId: UUID): MockTaskRecord[] {
+  return db.tasks.filter((task) => task.project_id === projectId)
+}
+
+/** The API shape: the assignee as `{ id, name }` and the key built from the project's key. */
+export function toTask(record: MockTaskRecord): Task {
+  const { assignee_id: assigneeId, ...fields } = record
+  const assignee = assigneeId ? db.users.find((user) => user.id === assigneeId) : undefined
+  const projectKey = findProject(record.project_id)?.key ?? '?'
+  return {
+    ...fields,
+    key: `${projectKey}-${record.number}`,
+    assignee: assignee ? { id: assignee.id, name: assignee.name } : null,
+  }
+}
+
+type NewTaskFields = Omit<MockTaskRecord, 'id' | 'number' | 'comment_count' | 'created_at' | 'updated_at'>
+
+/** Adds a task with the project's next number (numbers are never reused, even after deletes). */
+export function createTask(fields: NewTaskFields): MockTaskRecord {
+  const number = (db.taskNumbers[fields.project_id] ?? 0) + 1
+  db.taskNumbers[fields.project_id] = number
+  const now = new Date().toISOString()
+  const task: MockTaskRecord = { ...fields, id: crypto.randomUUID(), number, comment_count: 0, created_at: now, updated_at: now }
+  db.tasks.push(task)
+  return task
+}
+
+export function deleteTask(id: UUID): void {
+  db.tasks = db.tasks.filter((task) => task.id !== id)
+}
+
+/** Test helper: the task keys of each column of a project, in position order. */
+export function columnKeys(projectId: UUID): Record<TaskStatus, string[]> {
+  const columns: Record<TaskStatus, string[]> = { todo: [], in_progress: [], in_review: [], done: [] }
+  for (const task of [...tasksOf(projectId)].sort((a, b) => a.position - b.position || a.number - b.number)) {
+    columns[task.status].push(toTask(task).key)
+  }
+  return columns
 }

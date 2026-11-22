@@ -47,6 +47,38 @@ def create(
     return project
 
 
+def lock_for_task_write(db: Session, project: Project) -> None:
+    """Lock the project's row until the transaction ends, and reload `project` from it.
+
+    Every task write that is not allowed on an archived project (create, update, move) takes
+    this lock first, so task writes in one project serialize:
+    - concurrent creates read and bump `next_task_number` one after the other, so they never
+      get the same number;
+    - positions and column rebalances are computed from columns nobody else is changing;
+    - `archived_at` is current: a write waits for a concurrent archive and then sees it.
+
+    `FOR NO KEY UPDATE` still lets other transactions insert rows that reference the project.
+    """
+    stmt = (
+        select(Project)
+        .where(Project.id == project.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    db.execute(stmt).scalar_one()
+
+
+def take_task_number(db: Session, project: Project) -> int:
+    """The project's next task number, reserved for the caller. Needs `lock_for_task_write`.
+
+    The counter only grows, so a number is never reused, even after its task is deleted.
+    """
+    number = project.next_task_number
+    project.next_task_number = number + 1
+    db.flush()
+    return number
+
+
 def archive(db: Session, project: Project) -> bool:
     """Set `archived_at` to the database's now(), unless the project is already archived.
 

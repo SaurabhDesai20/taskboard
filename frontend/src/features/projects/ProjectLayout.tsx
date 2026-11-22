@@ -14,7 +14,7 @@ import './projects.css'
 
 /**
  * `/w/:slug/projects/:projectId`: breadcrumbs, a sidebar with the workspace's projects, and the
- * project (header plus the child page, the board placeholder for now). An unknown project, or
+ * project (header plus the child page, the task board). An unknown project, or
  * one from another workspace, shows a not-found state inside the layout.
  */
 export function ProjectLayout() {

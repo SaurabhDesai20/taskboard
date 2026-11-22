@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -27,3 +27,7 @@ class Project(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # The number the project's next task gets. Task writers lock this row
+    # (repositories.projects.lock_for_task_write), so concurrent creates take distinct numbers,
+    # and it only ever grows, so numbers are never reused after deletes. Not part of the API.
+    next_task_number: Mapped[int] = mapped_column(server_default=text("1"))
