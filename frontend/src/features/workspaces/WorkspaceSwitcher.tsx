@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
+import { ErrorState } from '../../components/ErrorState'
 import { RoleBadge } from '../../components/RoleBadge'
 import { useMe } from '../auth/hooks'
 import { CreateWorkspaceModal } from './CreateWorkspaceModal'
@@ -56,14 +57,7 @@ function WorkspaceSwitcherMenu() {
   if (query.isPending) {
     list = <p className="switcher__message">Loading workspaces...</p>
   } else if (query.isError) {
-    list = (
-      <div className="switcher__message" role="alert">
-        <p>Could not load your workspaces.</p>
-        <button type="button" className="button" onClick={() => void query.refetch()}>
-          Try again
-        </button>
-      </div>
-    )
+    list = <ErrorState compact message="Could not load your workspaces." onRetry={() => void query.refetch()} />
   } else if (query.data.length === 0) {
     list = <p className="switcher__message">You are not in any workspace yet.</p>
   } else {

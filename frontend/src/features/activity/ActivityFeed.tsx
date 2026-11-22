@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { UUID } from '../../api/types'
-import { StatusMessage } from '../../components/StatusMessage'
+import { ErrorState } from '../../components/ErrorState'
+import { ListSkeleton } from '../../components/Skeleton'
 import { useNow } from '../../lib/useNow'
 import { useOnVisible } from '../../lib/useOnVisible'
 import type { ActivityFilters } from './api'
@@ -33,25 +34,10 @@ export function ActivityFeed({ workspaceId, filters, label, empty, linkSlug }: A
   const sentinelRef = useOnVisible(() => void fetchNextPage(), hasNextPage && !isFetching && !isFetchNextPageError)
 
   if (activity.isPending) {
-    return (
-      <p className="activity-feed__note" role="status">
-        Loading activity...
-      </p>
-    )
+    return <ListSkeleton label="Loading activity..." rows={4} avatar />
   }
   if (activity.isError && !activity.data) {
-    return (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void activity.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load the activity. {activity.error.message}
-      </StatusMessage>
-    )
+    return <ErrorState message="Could not load the activity." error={activity.error} onRetry={() => void activity.refetch()} />
   }
   if (activity.data.length === 0) return empty
 

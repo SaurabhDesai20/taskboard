@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode, type RefObject } from 'react'
 import { Modal } from './Modal'
 
 interface ConfirmDialogProps {
   title: string
-  /** What will happen, in a sentence or two. */
+  /** What will happen, in a sentence or two. Read out as the dialog's description. */
   children: ReactNode
   confirmLabel: string
   pendingLabel: string
@@ -12,6 +12,8 @@ interface ConfirmDialogProps {
   pending: boolean
   /** A server error to show; the dialog stays open so the user can read it. */
   error: string | null
+  /** Where focus goes when the dialog closes (see Modal); read when it closes. */
+  returnFocusRef?: RefObject<HTMLElement | null>
 }
 
 /** A modal asking to confirm a destructive action. Cancel is focused first. */
@@ -24,15 +26,19 @@ export function ConfirmDialog({
   onCancel,
   pending,
   error,
+  returnFocusRef,
 }: ConfirmDialogProps) {
+  const bodyId = useId()
   // Closing while the request runs would hide its outcome.
   const close = () => {
     if (!pending) onCancel()
   }
 
   return (
-    <Modal title={title} onClose={close}>
-      <div className="modal__body">{children}</div>
+    <Modal title={title} onClose={close} returnFocusRef={returnFocusRef} describedBy={bodyId}>
+      <div id={bodyId} className="modal__body">
+        {children}
+      </div>
       {error ? (
         <div className="alert alert--error" role="alert">
           {error}

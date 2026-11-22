@@ -3,6 +3,8 @@
 // refetched too, because those usually mean someone else changed the membership in the meantime.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { Member, MemberCreate, Role, UUID, Workspace } from '../../api/types'
+import { useErrorToastWhenUnmounted, useToast } from '../../components/toastContext'
+import { ROLE_LABELS } from '../../lib/permissions'
 import { refreshActivity, refreshAfterConflict, useLeaveWorkspacePage, workspaceKeys } from '../workspaces/hooks'
 import { membersApi } from './api'
 
@@ -35,6 +37,8 @@ export interface RoleChange {
 
 export function useChangeMemberRole(workspaceId: UUID) {
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const reportIfGone = useErrorToastWhenUnmounted()
   return useMutation({
     mutationFn: ({ userId, role }: RoleChange) => membersApi.update(workspaceId, userId, { role }),
     onSuccess: (updated) => {
@@ -42,17 +46,26 @@ export function useChangeMemberRole(workspaceId: UUID) {
       queryClient.setQueryData<Member[]>(workspaceKeys.members(workspaceId), (members) =>
         members?.map((member) => (member.user_id === updated.user_id ? updated : member)),
       )
+      toast.success(`Changed ${updated.name}'s role to ${ROLE_LABELS[updated.role]}.`)
       return refetchMembers(queryClient, workspaceId)
     },
-    onError: (error) => refreshAfterConflict(queryClient, workspaceId, error),
+    onError: (error) => {
+      refreshAfterConflict(queryClient, workspaceId, error)
+      // The row shows the error; if the row is gone (the member left meanwhile), a toast does.
+      reportIfGone('Could not change the role.', error)
+    },
   })
 }
 
 export function useRemoveMember(workspaceId: UUID) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   return useMutation({
-    mutationFn: (userId: UUID) => membersApi.remove(workspaceId, userId),
-    onSuccess: () => refetchMembers(queryClient, workspaceId),
+    mutationFn: (member: Member) => membersApi.remove(workspaceId, member.user_id),
+    onSuccess: (_result, member) => {
+      toast.success(`Removed ${member.name} from the workspace.`)
+      return refetchMembers(queryClient, workspaceId)
+    },
     onError: (error) => refreshAfterConflict(queryClient, workspaceId, error),
   })
 }

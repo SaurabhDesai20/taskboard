@@ -1,5 +1,6 @@
 // Route wrappers that gate their child routes on the session (the `me` query).
 import { Navigate, Outlet, useLocation } from 'react-router'
+import { ErrorState } from '../../components/ErrorState'
 import { StatusMessage } from '../../components/StatusMessage'
 import { useMe } from './hooks'
 import { redirectStateFor, redirectTargetFrom } from './redirect'
@@ -19,18 +20,7 @@ export function RequireAuth() {
     return <Navigate to="/login" replace state={redirectStateFor(location)} />
   }
   if (me.isError) {
-    return (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void me.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        We could not check your session. {me.error.message}
-      </StatusMessage>
-    )
+    return <ErrorState message="We could not check your session." error={me.error} onRetry={() => void me.refetch()} />
   }
   return <SessionLoading />
 }

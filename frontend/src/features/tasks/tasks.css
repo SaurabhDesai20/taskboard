@@ -30,7 +30,7 @@
 
 .view-toggle__button[aria-pressed='true'] {
   font-weight: 600;
-  color: #ffffff;
+  color: var(--color-on-primary);
   background-color: var(--color-primary);
 }
 
@@ -87,6 +87,7 @@
 
 /* Kanban board */
 
+/* The columns share the width; when they do not fit (tablets, phones) the board scrolls sideways. */
 .board {
   display: grid;
   grid-auto-columns: minmax(15rem, 1fr);
@@ -95,6 +96,15 @@
   gap: 1rem;
   padding-bottom: 0.5rem;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+
+@media (max-width: 64rem) {
+  .board {
+    grid-auto-columns: minmax(14rem, 1fr);
+    gap: 0.75rem;
+  }
 }
 
 .board__error {
@@ -107,7 +117,8 @@
   gap: 0.5rem;
   min-height: 8rem;
   padding: 0.75rem;
-  background-color: #eef1f4;
+  scroll-snap-align: start;
+  background-color: var(--color-surface-sunken);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
 }
@@ -181,7 +192,7 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgb(31 35 40 / 6%);
+  box-shadow: var(--shadow-card);
 }
 
 .task-card:hover,
@@ -195,7 +206,7 @@
 
 .task-card-preview {
   cursor: grabbing;
-  box-shadow: 0 12px 32px rgb(31 35 40 / 25%);
+  box-shadow: var(--shadow-overlay);
   transform: rotate(1.5deg);
 }
 
@@ -228,7 +239,7 @@
 }
 
 .task-card__link:hover {
-  color: var(--color-primary);
+  color: var(--color-link);
   text-decoration: underline;
 }
 
@@ -262,21 +273,21 @@
 }
 
 .priority-badge--medium {
-  color: #0757b8;
-  background-color: #ddf4ff;
-  border-color: #addcff;
+  color: var(--badge-blue-fg);
+  background-color: var(--badge-blue-bg);
+  border-color: var(--badge-blue-border);
 }
 
 .priority-badge--high {
-  color: #9a4c00;
-  background-color: #fff1e5;
-  border-color: #ffc896;
+  color: var(--badge-orange-fg);
+  background-color: var(--badge-orange-bg);
+  border-color: var(--badge-orange-border);
 }
 
 .priority-badge--urgent {
-  color: #ffffff;
-  background-color: var(--color-danger);
-  border-color: var(--color-danger);
+  color: var(--color-on-primary);
+  background-color: var(--color-danger-solid);
+  border-color: var(--color-danger-solid);
 }
 
 /* Due date and assignee */
@@ -340,7 +351,7 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgb(140 149 159 / 30%);
+  box-shadow: var(--shadow-popover);
 }
 
 .move-menu__panel[hidden] {
@@ -394,6 +405,8 @@
 
 .task-table {
   width: 100%;
+  /* Scrolls sideways in its wrapper on narrow screens instead of squeezing the columns. */
+  min-width: 44rem;
   border-collapse: collapse;
   font-size: 0.9375rem;
 }
@@ -617,5 +630,32 @@
     flex-direction: row;
     align-items: center;
     justify-content: flex-start;
+  }
+}
+
+/* Placeholder cards in the board skeleton */
+
+.skeleton-task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.task-drawer__skeleton .loading-skeleton__shapes {
+  gap: 1rem;
+}
+
+/* Tablets: the filters take less room. */
+@media (max-width: 48rem) {
+  .filter-bar {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .filter-bar__clear {
+    margin-left: 0;
   }
 }

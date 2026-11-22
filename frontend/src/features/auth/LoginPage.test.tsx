@@ -153,4 +153,33 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('heading', { name: 'Your workspaces' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
+
+  it('says clearly how long to wait after too many attempts (429 with Retry-After)', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/auth/login', () =>
+        HttpResponse.json(
+          { error: { code: 'rate_limited', message: 'Too many login attempts', details: {} } },
+          { status: 429, headers: { 'Retry-After': '42' } },
+        ),
+      ),
+    )
+    const { router } = renderRoute({ route: '/login' })
+
+    await fillLogin(user, DEMO_USER.email, DEMO_USER.password)
+    await user.click(screen.getByRole('button', { name: 'Log in' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts. Please wait 42 seconds and try again.')
+    expect(router.state.location.pathname).toBe('/login')
+    // Nothing is marked as a wrong field: the credentials may well be right.
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByLabelText('Password')).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('titles the page', async () => {
+    renderRoute({ route: '/login' })
+
+    await screen.findByRole('heading', { name: 'Log in' })
+    expect(document.title).toBe('Log in · TaskBoard')
+  })
 })

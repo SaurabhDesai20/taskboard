@@ -2,8 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app/App'
 import './index.css'
+import { applyTheme, storedTheme } from './lib/theme'
+
+// A saved theme choice applies before the first render (no flash of the other theme).
+applyTheme(storedTheme())
 
 async function enableMocking(): Promise<void> {
+  // `import.meta.env.DEV` is false in a production build, so the MSW import below is dropped.
   if (!import.meta.env.DEV || import.meta.env.VITE_API_MOCKING !== 'true') {
     return
   }

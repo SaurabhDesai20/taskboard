@@ -1,8 +1,11 @@
 import { useId } from 'react'
 import { Link, NavLink } from 'react-router'
 import type { MyTask } from '../../api/types'
-import { StatusMessage } from '../../components/StatusMessage'
+import { EmptyState } from '../../components/EmptyState'
+import { ErrorState } from '../../components/ErrorState'
+import { ListSkeleton } from '../../components/Skeleton'
 import { todayDateOnly } from '../../lib/dates'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { useMe } from '../auth/hooks'
 import { DueDate } from './DueDate'
 import { groupMyTasks, isOverdue, MY_TASK_GROUP_LABELS, MY_TASK_GROUPS, type MyTaskGroup } from './dueDates'
@@ -31,32 +34,19 @@ export function MyTasksLink() {
 export function MyTasksPage() {
   const query = useMyTasks()
   const today = todayDateOnly()
+  useDocumentTitle('My tasks')
 
   let content
   if (query.isPending) {
-    content = <StatusMessage>Loading your tasks...</StatusMessage>
+    content = <ListSkeleton label="Loading your tasks..." rows={4} />
   } else if (query.isError) {
-    content = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void query.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load your tasks. {query.error.message}
-      </StatusMessage>
-    )
+    content = <ErrorState message="Could not load your tasks." error={query.error} onRetry={() => void query.refetch()} />
   } else {
     const groups = groupMyTasks(query.data, today)
     const shown = MY_TASK_GROUPS.filter((group) => groups[group].length > 0)
     content =
       shown.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-state__title">Nothing assigned to you</p>
-          <p>Open tasks assigned to you in any workspace show up here.</p>
-        </div>
+        <EmptyState title="Nothing assigned to you">Open tasks assigned to you in any workspace show up here.</EmptyState>
       ) : (
         shown.map((group) => <MyTaskSection key={group} group={group} tasks={groups[group]} today={today} />)
       )
@@ -93,16 +83,25 @@ function MyTaskSection({ group, tasks, today }: { group: MyTaskGroup; tasks: MyT
   )
 }
 
-function MyTaskItem({ task, today }: { task: MyTask; today: string }) {
+interface MyTaskItemProps {
+  task: MyTask
+  today: string
+  /** The title's heading level, one below the list's heading (default 3). */
+  headingLevel?: 3 | 4
+}
+
+/** One of my tasks: key, title (opens it on its board, drawer open), where it lives, priority and due date. */
+export function MyTaskItem({ task, today, headingLevel = 3 }: MyTaskItemProps) {
   const titleId = useId()
+  const Title = `h${headingLevel}` as const
   return (
     <li>
       <article className="my-task" aria-labelledby={titleId}>
         <div className="my-task__main">
           <span className="task-card__key">{task.key}</span>
-          <h3 id={titleId} className="my-task__title">
+          <Title id={titleId} className="my-task__title">
             <Link to={taskPath(task.workspace.slug, task.project.id, task.id)}>{task.title}</Link>
-          </h3>
+          </Title>
         </div>
         <p className="my-task__context">
           {task.project.name} · {task.workspace.name} · {STATUS_LABELS[task.status]}

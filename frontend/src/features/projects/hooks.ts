@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { useParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import type { Project, ProjectCreate, ProjectUpdate, UUID } from '../../api/types'
+import { useToast } from '../../components/toastContext'
 import { refreshActivity, refreshAfterConflict, useCurrentWorkspace, workspaceKeys } from '../workspaces/hooks'
 import { projectsApi } from './api'
 
@@ -100,18 +101,26 @@ export function useCurrentProject() {
 
 export function useCreateProject(workspaceId: UUID) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   return useMutation({
     mutationFn: (body: ProjectCreate) => projectsApi.create(workspaceId, body),
-    onSuccess: (project) => storeProject(queryClient, project),
+    onSuccess: (project) => {
+      storeProject(queryClient, project)
+      toast.success(`Created the project ${project.name}.`)
+    },
     onError: (error) => refreshAfterConflict(queryClient, workspaceId, error),
   })
 }
 
 export function useUpdateProject(project: Project) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   return useMutation({
     mutationFn: (body: ProjectUpdate) => projectsApi.update(project.id, body),
-    onSuccess: (updated) => storeProject(queryClient, updated),
+    onSuccess: (updated) => {
+      storeProject(queryClient, updated)
+      toast.success(`Saved the changes to ${updated.name}.`)
+    },
     onError: (error) => refreshAfterConflict(queryClient, project.workspace_id, error),
   })
 }
@@ -123,10 +132,12 @@ export function useUpdateProject(project: Project) {
  */
 export function useArchiveProject(project: Project, { onArchived }: { onArchived?: (project: Project) => void } = {}) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   return useMutation({
     mutationFn: () => projectsApi.archive(project.id),
     onSuccess: (archived) => {
       storeProject(queryClient, archived)
+      toast.success(`Archived ${archived.name}.`)
       onArchived?.(archived)
     },
     // 409 already_archived (archived elsewhere) also refreshes, so the UI catches up.

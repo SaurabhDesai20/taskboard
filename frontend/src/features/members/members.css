@@ -11,6 +11,8 @@
 
 .members {
   width: 100%;
+  /* Scrolls sideways in its wrapper on narrow screens instead of squeezing the columns. */
+  min-width: 36rem;
   border-collapse: collapse;
   font-size: 0.9375rem;
 }

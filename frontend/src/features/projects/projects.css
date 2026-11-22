@@ -120,8 +120,26 @@
   gap: 1.5rem;
 }
 
-@media (max-width: 48rem) {
+/* Sidebar collapsed: just its "Projects" button, the board gets the room. */
+.project-layout__body--collapsed {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+@media (max-width: 64rem) {
   .project-layout__body {
+    grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .project-layout__body--collapsed {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+/* Portrait tablets and phones: the sidebar sits above the board. */
+@media (max-width: 48rem) {
+  .project-layout__body,
+  .project-layout__body--collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -143,19 +161,73 @@
   border-radius: var(--radius);
 }
 
-.project-sidebar__title,
-.project-sidebar__subtitle {
+.project-sidebar--collapsed {
+  padding: 0.375rem;
+}
+
+.project-sidebar__title {
   margin: 0;
+  font-size: inherit;
+}
+
+/* The heading is the disclosure button that shows or hides the list. */
+.project-sidebar__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.project-sidebar__toggle:hover {
+  color: var(--color-text);
+  background-color: var(--color-bg);
+}
+
+/* A chevron: up while the list shows, down while it is hidden. */
+.project-sidebar__chevron {
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.25rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-135deg);
+}
+
+.project-sidebar__toggle[aria-expanded='false'] .project-sidebar__chevron {
+  margin-top: -0.25rem;
+  transform: rotate(45deg);
+}
+
+.project-sidebar__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.project-sidebar__content[hidden] {
+  display: none;
+}
+
+.project-sidebar__subtitle {
+  margin: 0.5rem 0 0;
   padding: 0 0.5rem;
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.project-sidebar__subtitle {
-  margin-top: 0.5rem;
 }
 
 .project-sidebar__list {
@@ -182,8 +254,8 @@
 
 .project-sidebar__link[aria-current='page'] {
   font-weight: 600;
-  color: var(--color-primary);
-  background-color: #ddf4ff;
+  color: var(--color-link);
+  background-color: var(--color-primary-subtle);
 }
 
 .project-sidebar__key {
@@ -267,4 +339,8 @@
 
 .banner:focus {
   outline: none;
+}
+
+.project-header-skeleton .loading-skeleton__shapes {
+  gap: 0.75rem;
 }

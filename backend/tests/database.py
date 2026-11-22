@@ -40,6 +40,10 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL_STR
 os.environ["APP_ENV"] = "test"
 # Tests sign tokens with their own key (long enough for HS256), not the developer's .env one.
 os.environ["JWT_SECRET"] = "test-only-jwt-secret-0123456789abcdefghijklmnop"
+# The suite logs in and registers far more often than the auth rate limits allow; the tests of
+# the limits build their own app with limits on (tests/api/test_auth_rate_limit.py).
+os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "0"
+os.environ["AUTH_RATE_LIMIT_PER_EMAIL_PER_MINUTE"] = "0"
 get_settings.cache_clear()
 
 

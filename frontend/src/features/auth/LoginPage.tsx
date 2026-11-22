@@ -2,11 +2,13 @@ import { Link, useLocation } from 'react-router'
 import { TextField } from '../../components/TextField'
 import { formErrorsFromError } from '../../lib/formErrors'
 import { useForm } from '../../lib/useForm'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { AuthCard } from './AuthCard'
 import { useLogin } from './hooks'
 import { LOGIN_FIELDS, normalizeLogin, validateLogin, type LoginField } from './validation'
 
 export function LoginPage() {
+  useDocumentTitle('Log in')
   const location = useLocation()
   const login = useLogin()
   const form = useForm<LoginField>({

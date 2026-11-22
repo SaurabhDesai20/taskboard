@@ -31,6 +31,16 @@ def test_auth_schema_names(openapi: dict[str, Any]) -> None:
     assert "requestBody" not in paths["/api/auth/logout"]["post"]
 
 
+def test_rate_limited_auth_endpoints_document_429(openapi: dict[str, Any]) -> None:
+    paths = openapi["paths"]
+
+    for path in ("/api/auth/register", "/api/auth/login"):
+        assert _ref(paths[path]["post"]["responses"]["429"]) == "ErrorEnvelope"
+    assert "429" not in paths["/api/auth/logout"]["post"]["responses"]
+    # The login body comes through the rate-limit dependency, still as one plain body.
+    assert [p["name"] for p in paths["/api/auth/login"]["post"].get("parameters", [])] == []
+
+
 def test_user_read_has_exactly_the_contract_fields(openapi: dict[str, Any]) -> None:
     user_read = openapi["components"]["schemas"]["UserRead"]
 

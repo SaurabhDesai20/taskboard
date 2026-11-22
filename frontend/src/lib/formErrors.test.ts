@@ -71,4 +71,16 @@ describe('formErrorsFromError', () => {
       form: GENERIC_ERROR_MESSAGE,
     })
   })
+
+  it.each([
+    [42, 'Too many attempts. Please wait 42 seconds and try again.'],
+    [1, 'Too many attempts. Please wait 1 second and try again.'],
+    [60, 'Too many attempts. Please wait 1 minute and try again.'],
+    [61, 'Too many attempts. Please wait 2 minutes and try again.'],
+    [null, 'Too many attempts. Please wait a moment and try again.'],
+  ])('says how long to wait after a 429 (Retry-After %s)', (retryAfter, message) => {
+    const error = new ApiError(429, 'rate_limited', 'Too many login attempts', {}, retryAfter)
+
+    expect(formErrorsFromError(error, { fields })).toEqual({ fields: {}, form: message })
+  })
 })

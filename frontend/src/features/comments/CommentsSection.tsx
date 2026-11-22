@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef } from 'react'
 import type { Project, Role, Task } from '../../api/types'
-import { StatusMessage } from '../../components/StatusMessage'
+import { ErrorState } from '../../components/ErrorState'
+import { ListSkeleton } from '../../components/Skeleton'
 import { useNow } from '../../lib/useNow'
 import { useMe } from '../auth/hooks'
 import { commentAccess } from './access'
@@ -32,20 +33,10 @@ export function CommentsSection({ task, project, role }: CommentsSectionProps) {
 
   let thread
   if (comments.isPending) {
-    thread = <p className="comments__note">Loading comments...</p>
+    // Not announced: the drawer has just said which task opened.
+    thread = <ListSkeleton label="Loading comments..." rows={2} avatar announce={false} />
   } else if (comments.isError && !comments.data) {
-    thread = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void comments.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load the comments. {comments.error.message}
-      </StatusMessage>
-    )
+    thread = <ErrorState message="Could not load the comments." error={comments.error} onRetry={() => void comments.refetch()} />
   } else if (comments.data.length === 0) {
     thread = <p className="comments__note">No comments yet.</p>
   } else {

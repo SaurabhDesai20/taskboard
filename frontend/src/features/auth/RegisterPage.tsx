@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router'
 import { TextField } from '../../components/TextField'
 import { formErrorsFromError } from '../../lib/formErrors'
 import { useForm } from '../../lib/useForm'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { AuthCard } from './AuthCard'
 import { useRegister } from './hooks'
 import {
@@ -14,6 +15,7 @@ import {
 } from './validation'
 
 export function RegisterPage() {
+  useDocumentTitle('Create an account')
   const location = useLocation()
   const registerUser = useRegister()
   const form = useForm<RegisterField>({

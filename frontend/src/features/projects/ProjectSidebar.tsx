@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { Link, NavLink } from 'react-router'
 import type { Project, Workspace } from '../../api/types'
+import { ErrorState } from '../../components/ErrorState'
 import { useProjects } from './hooks'
 import { projectPath } from './paths'
 
@@ -8,12 +9,19 @@ interface ProjectSidebarProps {
   workspace: Workspace
   /** The open project, once loaded. Listed under "Archived" when it is archived. */
   currentProject: Project | undefined
+  /** Whether the list is shown; collapsing it leaves more room for the board. */
+  open: boolean
+  onToggle: (open: boolean) => void
 }
 
-/** The workspace's active projects; the open one is marked as the current page. */
-export function ProjectSidebar({ workspace, currentProject }: ProjectSidebarProps) {
+/**
+ * The workspace's active projects; the open one is marked as the current page. The "Projects"
+ * heading is a disclosure button (aria-expanded) that shows or hides the list.
+ */
+export function ProjectSidebar({ workspace, currentProject, open, onToggle }: ProjectSidebarProps) {
   const projects = useProjects(workspace.id)
   const titleId = useId()
+  const contentId = useId()
   const archivedTitleId = useId()
 
   const link = (project: Project) => (
@@ -31,14 +39,7 @@ export function ProjectSidebar({ workspace, currentProject }: ProjectSidebarProp
   if (projects.isPending) {
     list = <p className="project-sidebar__message">Loading projects...</p>
   } else if (projects.isError) {
-    list = (
-      <div className="project-sidebar__message" role="alert">
-        <p>Could not load the projects.</p>
-        <button type="button" className="button button--small" onClick={() => void projects.refetch()}>
-          Try again
-        </button>
-      </div>
-    )
+    list = <ErrorState compact message="Could not load the projects." onRetry={() => void projects.refetch()} />
   } else if (projects.data.length === 0) {
     list = <p className="project-sidebar__message">No active projects.</p>
   } else {
@@ -48,24 +49,37 @@ export function ProjectSidebar({ workspace, currentProject }: ProjectSidebarProp
   const archivedCurrent = currentProject?.archived_at ? currentProject : undefined
 
   return (
-    <nav className="project-sidebar" aria-labelledby={titleId}>
-      <h2 id={titleId} className="project-sidebar__title">
-        Projects
+    <nav className={`project-sidebar${open ? '' : ' project-sidebar--collapsed'}`} aria-labelledby={titleId}>
+      <h2 className="project-sidebar__title">
+        <button
+          id={titleId}
+          type="button"
+          className="project-sidebar__toggle"
+          aria-expanded={open}
+          aria-controls={contentId}
+          title={open ? 'Hide the project list' : 'Show the project list'}
+          onClick={() => onToggle(!open)}
+        >
+          Projects
+          <span className="project-sidebar__chevron" aria-hidden="true" />
+        </button>
       </h2>
-      {list}
-      {archivedCurrent ? (
-        <>
-          <h3 id={archivedTitleId} className="project-sidebar__subtitle">
-            Archived
-          </h3>
-          <ul className="project-sidebar__list" aria-labelledby={archivedTitleId}>
-            {link(archivedCurrent)}
-          </ul>
-        </>
-      ) : null}
-      <Link to={`/w/${workspace.slug}`} className="project-sidebar__all">
-        All projects
-      </Link>
+      <div id={contentId} className="project-sidebar__content" hidden={!open}>
+        {list}
+        {archivedCurrent ? (
+          <>
+            <h3 id={archivedTitleId} className="project-sidebar__subtitle">
+              Archived
+            </h3>
+            <ul className="project-sidebar__list" aria-labelledby={archivedTitleId}>
+              {link(archivedCurrent)}
+            </ul>
+          </>
+        ) : null}
+        <Link to={`/w/${workspace.slug}`} className="project-sidebar__all">
+          All projects
+        </Link>
+      </div>
     </nav>
   )
 }

@@ -1,6 +1,8 @@
 import { useCallback, useId, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import type { Member, Project, Workspace } from '../../api/types'
+import { EmptyState } from '../../components/EmptyState'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { useMembers } from '../members/hooks'
 import { useProjects } from '../projects/hooks'
 import { useCurrentWorkspace } from '../workspaces/hooks'
@@ -18,6 +20,7 @@ export function WorkspaceActivityPage() {
 
 function WorkspaceActivity({ workspace }: { workspace: Workspace }) {
   const headingId = useId()
+  useDocumentTitle('Activity', workspace.name)
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = useMemo(() => feedFiltersFromSearchParams(searchParams), [searchParams])
   const filtered = hasFeedFilters(filters)
@@ -39,14 +42,11 @@ function WorkspaceActivity({ workspace }: { workspace: Workspace }) {
         label={`Activity in ${workspace.name}`}
         linkSlug={workspace.slug}
         empty={
-          <div className="empty-state">
-            <p className="empty-state__title">{filtered ? 'No activity matches the filters' : 'No activity yet'}</p>
-            <p>
-              {filtered
-                ? 'Choose another project or person, or clear the filters.'
-                : 'Changes to projects, tasks, comments and members show up here.'}
-            </p>
-          </div>
+          <EmptyState title={filtered ? 'No activity matches the filters' : 'No activity yet'}>
+            {filtered
+              ? 'Choose another project or person, or clear the filters.'
+              : 'Changes to projects, tasks, comments and members show up here.'}
+          </EmptyState>
         }
       />
     </section>

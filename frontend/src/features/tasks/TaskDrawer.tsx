@@ -1,8 +1,9 @@
-import { useId, useRef, useState } from 'react'
+import { useCallback, useId, useRef, useState, type RefObject } from 'react'
 import type { Member, Project, Role, Task, UUID } from '../../api/types'
+import { ErrorState } from '../../components/ErrorState'
 import { Modal } from '../../components/Modal'
 import { SelectField } from '../../components/SelectField'
-import { StatusMessage } from '../../components/StatusMessage'
+import { LoadingSkeleton, Skeleton } from '../../components/Skeleton'
 import { Tabs } from '../../components/Tabs'
 import { TextAreaField } from '../../components/TextAreaField'
 import { TextField } from '../../components/TextField'
@@ -32,6 +33,8 @@ interface TaskDrawerProps {
   /** My role in the workspace, for the comment thread (who may comment, edit, delete). */
   role: Role
   onClose: () => void
+  /** Where focus goes after the task is deleted (its card, which opened the drawer, is gone). */
+  afterDeleteFocusRef?: RefObject<HTMLElement | null>
 }
 
 /**
@@ -48,10 +51,17 @@ export function TaskDrawer({
   readOnlyReason,
   role,
   onClose,
+  afterDeleteFocusRef,
 }: TaskDrawerProps) {
   const query = useTask(project, taskId)
   const notFound = query.isError && isTaskNotFound(query.error)
   const task = notFound ? undefined : query.data
+  // Empty until the task is deleted: then focus goes to `afterDeleteFocusRef` on close.
+  const returnFocus = useRef<HTMLElement | null>(null)
+  const closeAfterDelete = useCallback(() => {
+    returnFocus.current = afterDeleteFocusRef?.current ?? null
+    onClose()
+  }, [afterDeleteFocusRef, onClose])
 
   let title: string
   let body
@@ -78,30 +88,19 @@ export function TaskDrawer({
             { id: 'activity', label: 'Activity', panel: <TaskActivity task={task} /> },
           ]}
         />
-        {canDelete ? <DeleteTask key={task.id} task={task} onDeleted={onClose} /> : null}
+        {canDelete ? <DeleteTask key={task.id} task={task} onDeleted={closeAfterDelete} /> : null}
       </>
     )
   } else if (query.isError) {
     title = 'Task'
-    body = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void query.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load the task. {query.error.message}
-      </StatusMessage>
-    )
+    body = <ErrorState message="Could not load the task." error={query.error} onRetry={() => void query.refetch()} />
   } else {
     title = 'Task'
-    body = <StatusMessage>Loading task...</StatusMessage>
+    body = <TaskDrawerSkeleton />
   }
 
   return (
-    <Modal title={title} onClose={onClose} variant="drawer">
+    <Modal title={title} onClose={onClose} variant="drawer" returnFocusRef={returnFocus}>
       <button
         type="button"
         className="button button--small task-drawer__close"
@@ -112,6 +111,23 @@ export function TaskDrawer({
       </button>
       {body}
     </Modal>
+  )
+}
+
+/** The drawer's shape while the task loads: details, then the comments. */
+function TaskDrawerSkeleton() {
+  return (
+    <LoadingSkeleton label="Loading task..." className="task-drawer__skeleton">
+      <Skeleton width="40%" height="0.875rem" />
+      <Skeleton height="2.25rem" />
+      <div className="task-drawer__grid">
+        <Skeleton height="2.25rem" />
+        <Skeleton height="2.25rem" />
+        <Skeleton height="2.25rem" />
+        <Skeleton height="2.25rem" />
+      </div>
+      <Skeleton height="6rem" />
+    </LoadingSkeleton>
   )
 }
 

@@ -7,6 +7,7 @@ import { addDays, formatDateOnly, todayDateOnly } from '../../lib/dates'
 import { columnKeys, findProject, MOCK_PROJECTS, MOCK_TASK_IDS, MOCK_USERS, startMockSession, tasksOf } from '../../mocks/db'
 import { server } from '../../mocks/server'
 import { renderRoute } from '../../test/render'
+import { findToast, liveRegionOf } from '../../test/toasts'
 
 const { website, legacy } = MOCK_PROJECTS
 const ids = MOCK_TASK_IDS
@@ -296,7 +297,8 @@ describe('moving with the keyboard menu', () => {
 
     release()
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not move WEB-2. Database hiccup')
+    const toast = await findToast('Could not move WEB-2. Database hiccup')
+    expect(liveRegionOf(toast)).toBe('assertive')
     await waitFor(() => expect(keysIn('To Do')).toEqual(['WEB-2', 'WEB-3', 'WEB-4']))
     expect(keysIn('Done')).toEqual(['WEB-6'])
     expect(columnKeys(website.id).todo).toEqual(['WEB-2', 'WEB-3', 'WEB-4'])
@@ -312,9 +314,37 @@ describe('moving with the keyboard menu', () => {
 
     await chooseMove(user, 'WEB-3', 'Move to top of Done')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/^Could not move WEB-3\. This project is archived/)
+    expect(await findToast(/^Could not move WEB-3\. This project is archived/)).toBeInTheDocument()
     await waitFor(() => expect(keysIn('To Do')).toEqual(['WEB-2', 'WEB-3', 'WEB-4']))
     expect(await screen.findByRole('note')).toHaveTextContent('This project is read-only')
     await waitFor(() => expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument())
+  })
+})
+
+describe('loading', () => {
+  it('shows a board-shaped skeleton (one placeholder column per shown status) while the tasks load', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get('/api/projects/:pid/tasks', async () => {
+        await gate
+        return undefined
+      }),
+    )
+    startMockSession(MOCK_USERS.ben.id)
+    renderRoute({ route: `/w/acme/projects/${website.id}?status=todo&status=done` })
+
+    const tasks = await screen.findByRole('region', { name: 'Tasks' })
+    const status = await within(tasks).findByRole('status')
+    expect(status).toHaveTextContent('Loading tasks...')
+    expect(status.querySelectorAll('.board-column')).toHaveLength(2)
+    // Placeholders are not real columns: no regions, cards or buttons yet.
+    expect(within(tasks).queryByRole('region')).not.toBeInTheDocument()
+
+    release()
+    await waitFor(() => expect(keysIn('To Do')).toEqual(['WEB-2', 'WEB-3', 'WEB-4']))
+    expect(within(tasks).queryByText('Loading tasks...')).not.toBeInTheDocument()
   })
 })

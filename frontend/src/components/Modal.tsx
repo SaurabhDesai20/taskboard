@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { focusFirstConnected, mainFocusTarget, sectionHeadingOf } from '../lib/focus'
 
 const FOCUSABLE = [
   'a[href]',
@@ -24,17 +25,33 @@ interface ModalProps {
   children: ReactNode
   /** Focused when the modal opens. Defaults to the first focusable element inside it. */
   initialFocusRef?: RefObject<HTMLElement | null>
-  /** Focused after the modal closes. Defaults to whatever had focus when it opened. */
+  /**
+   * Focused after the modal closes; read at that moment, so a caller can point it somewhere else
+   * just before closing (e.g. at a list heading after deleting the row that opened the modal).
+   * Defaults to whatever had focus when the modal opened.
+   */
   returnFocusRef?: RefObject<HTMLElement | null>
+  /** Id of the text that describes the dialog (e.g. the question a confirmation asks). */
+  describedBy?: string
   /** `drawer`: a full-height panel on the right (e.g. task details) instead of a centered box. */
   variant?: 'dialog' | 'drawer'
 }
 
 /**
  * An accessible modal dialog, rendered while mounted (open it by rendering it): focus moves in,
- * Tab and Shift+Tab stay inside, Escape closes, and focus returns to where it came from.
+ * Tab and Shift+Tab stay inside, Escape closes, and focus returns to where it came from. If that
+ * element is gone by then (its row was deleted, or a role change hid it), focus goes to the
+ * heading of the section it was in, else to the page's main heading, never to the page body.
  */
-export function Modal({ title, onClose, children, initialFocusRef, returnFocusRef, variant = 'dialog' }: ModalProps) {
+export function Modal({
+  title,
+  onClose,
+  children,
+  initialFocusRef,
+  returnFocusRef,
+  describedBy,
+  variant = 'dialog',
+}: ModalProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   // Read during the first render, before anything inside the modal can take focus.
@@ -44,7 +61,10 @@ export function Modal({ title, onClose, children, initialFocusRef, returnFocusRe
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return undefined
-    const returnTarget = returnFocusRef?.current ?? openedFrom
+    // Null when nothing had focus (e.g. a drawer opened straight from the URL).
+    const opener = openedFrom instanceof HTMLElement && openedFrom !== document.body ? openedFrom : null
+    // Worked out now, while the opener is still in the page.
+    const openerSection = sectionHeadingOf(opener)
     const focusFirst = () => (initialFocusRef?.current ?? focusableIn(dialog)[0] ?? dialog).focus()
     focusFirst()
 
@@ -56,7 +76,9 @@ export function Modal({ title, onClose, children, initialFocusRef, returnFocusRe
 
     return () => {
       document.removeEventListener('focusin', handleFocusIn)
-      if (returnTarget instanceof HTMLElement && returnTarget.isConnected) returnTarget.focus()
+      // Read on close on purpose: callers point the ref elsewhere just before closing.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      focusFirstConnected([returnFocusRef?.current, opener, openerSection, mainFocusTarget()])
     }
   }, [initialFocusRef, returnFocusRef, openedFrom])
 
@@ -96,6 +118,7 @@ export function Modal({ title, onClose, children, initialFocusRef, returnFocusRe
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={describedBy}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >

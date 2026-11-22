@@ -5,9 +5,9 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { useMatch, useNavigate } from 'react-router'
 import { ApiError } from '../../api/client'
 import type { UUID, Workspace } from '../../api/types'
+import { useToast } from '../../components/toastContext'
 import { can, type Action } from '../../lib/permissions'
 import { workspacesApi } from './api'
-import { noticeState } from './notice'
 
 export const workspaceKeys = {
   all: ['workspaces'] as const,
@@ -99,9 +99,13 @@ export function useCan(action: Action): boolean {
 
 export function useCreateWorkspace() {
   const queryClient = useQueryClient()
+  const toast = useToast()
   return useMutation({
     mutationFn: workspacesApi.create,
-    onSuccess: (workspace) => storeWorkspace(queryClient, workspace),
+    onSuccess: (workspace) => {
+      storeWorkspace(queryClient, workspace)
+      toast.success(`Created the workspace ${workspace.name}.`)
+    },
   })
 }
 
@@ -114,13 +118,18 @@ export function useRenameWorkspace(id: UUID) {
   })
 }
 
-/** Navigates home first (so the workspace pages unmount), then drops the cached workspace. */
+/**
+ * Navigates home first (so the workspace pages unmount), then drops the cached workspace and
+ * says what happened in a toast (which, unlike router state, does not come back on a reload).
+ */
 export function useLeaveWorkspacePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  return (workspace: Workspace, notice: string) => {
-    void navigate('/', { replace: true, flushSync: true, state: noticeState(notice) })
+  const toast = useToast()
+  return (workspace: Workspace, message: string) => {
+    void navigate('/', { replace: true, flushSync: true })
     forgetWorkspace(queryClient, workspace.id)
+    toast.success(message)
   }
 }
 

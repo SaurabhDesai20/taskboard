@@ -4,9 +4,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import type { Project, Task, TaskCreate, TaskMoveRequest, TaskStatus, TaskUpdate, UUID } from '../../api/types'
+import { useErrorToastWhenUnmounted, useToast } from '../../components/toastContext'
 import { refreshActivity, refreshAfterConflict, workspaceKeys } from '../workspaces/hooks'
 import { tasksApi } from './api'
 import { hasActiveFilters, type TaskFilters } from './filters'
+import { STATUS_LABELS } from './labels'
 import { applyMove, sortTasks } from './ordering'
 
 export const taskKeys = {
@@ -105,11 +107,14 @@ export function useTask(project: Project, taskId: UUID | null) {
 
 export function useCreateTask(project: Project) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   return useMutation({
     mutationFn: (body: TaskCreate) => tasksApi.create(project.id, body),
     onSuccess: (task) => {
       storeNewTask(queryClient, task)
       refreshTaskLists(queryClient, task)
+      // Focus stays in the title box for the next task, so this is the only word that it worked.
+      toast.success(`Added ${task.key} to ${STATUS_LABELS[task.status]}.`)
     },
     // 409 project_archived refetches the project too, so the board turns read-only.
     onError: (error) => refreshAfterConflict(queryClient, project.workspace_id, error),
@@ -118,13 +123,18 @@ export function useCreateTask(project: Project) {
 
 export function useUpdateTask(task: Task) {
   const queryClient = useQueryClient()
+  const reportIfClosed = useErrorToastWhenUnmounted()
   return useMutation({
     mutationFn: (body: TaskUpdate) => tasksApi.update(task.id, body),
     onSuccess: (updated) => {
       storeTask(queryClient, updated)
       refreshTaskLists(queryClient, updated)
     },
-    onError: (error) => refreshAfterConflict(queryClient, task.workspace_id, error),
+    onError: (error) => {
+      refreshAfterConflict(queryClient, task.workspace_id, error)
+      // The form shows the error; if the drawer was closed meanwhile, a toast does.
+      reportIfClosed(`Could not save ${task.key}.`, error)
+    },
   })
 }
 
@@ -134,6 +144,8 @@ export function useUpdateTask(task: Task) {
  */
 export function useDeleteTask(task: Task, { onDeleted }: { onDeleted?: () => void } = {}) {
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const reportIfClosed = useErrorToastWhenUnmounted()
   return useMutation({
     mutationFn: () => tasksApi.remove(task.id),
     onSuccess: () => {
@@ -147,9 +159,13 @@ export function useDeleteTask(task: Task, { onDeleted }: { onDeleted?: () => voi
         exact: true,
         refetchType: 'none',
       })
+      toast.success(`Deleted ${task.key}.`)
       onDeleted?.()
     },
-    onError: (error) => refreshAfterConflict(queryClient, task.workspace_id, error),
+    onError: (error) => {
+      refreshAfterConflict(queryClient, task.workspace_id, error)
+      reportIfClosed(`Could not delete ${task.key}.`, error)
+    },
   })
 }
 
@@ -165,11 +181,13 @@ interface MoveContext {
 
 /**
  * Moves a task (drag and drop or the move menu) with an optimistic update: the new order is
- * written to every cached list of the project at once, restored if the server says no, and the
- * lists are refetched afterwards either way (the server may have rebalanced the column).
+ * written to every cached list of the project at once, restored if the server says no (with an
+ * error toast saying why), and the lists are refetched afterwards either way (the server may have
+ * rebalanced the column).
  */
 export function useMoveTask(project: Project) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const listsKey = taskKeys.lists(project.workspace_id, project.id)
   return useMutation<Task, Error, MoveTaskVariables, MoveContext>({
     mutationFn: ({ task, request }) => tasksApi.move(task.id, request),
@@ -182,9 +200,10 @@ export function useMoveTask(project: Project) {
       )
       return { snapshot }
     },
-    onError: (error, _variables, context) => {
+    onError: (error, { task }, context) => {
       for (const [queryKey, list] of context?.snapshot ?? []) queryClient.setQueryData(queryKey, list)
       refreshAfterConflict(queryClient, project.workspace_id, error)
+      toast.error(`Could not move ${task.key}. ${error.message}`)
     },
     onSuccess: (moved) => {
       queryClient.setQueryData<Task>(taskKeys.detail(moved.workspace_id, moved.id), moved)

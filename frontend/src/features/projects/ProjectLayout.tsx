@@ -2,9 +2,12 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, Outlet } from 'react-router'
 import type { Project, Workspace } from '../../api/types'
 import { Breadcrumbs, type Crumb } from '../../components/Breadcrumbs'
-import { StatusMessage } from '../../components/StatusMessage'
+import { ErrorState } from '../../components/ErrorState'
+import { LoadingSkeleton, Skeleton } from '../../components/Skeleton'
 import { formatDate } from '../../lib/dates'
 import { can } from '../../lib/permissions'
+import { useBooleanPreference } from '../../lib/preferences'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { ArchiveProjectDialog } from './ArchiveProjectDialog'
 import { EditProjectModal } from './EditProjectModal'
 import { isProjectNotFound, useCurrentProject } from './hooks'
@@ -13,42 +16,35 @@ import { ProjectSidebar } from './ProjectSidebar'
 import './projects.css'
 
 /**
- * `/w/:slug/projects/:projectId`: breadcrumbs, a sidebar with the workspace's projects, and the
- * project (header plus the child page, the task board). An unknown project, or
- * one from another workspace, shows a not-found state inside the layout.
+ * `/w/:slug/projects/:projectId`: breadcrumbs, the project's header, then a sidebar with the
+ * workspace's projects (collapsible, remembered) next to the child page, the task board. An
+ * unknown project, or one from another workspace, shows a not-found state inside the layout.
  */
 export function ProjectLayout() {
   const { workspace, projectId, query } = useCurrentProject()
-  if (!workspace || !projectId) return null
-
+  const [sidebarOpen, setSidebarOpen] = useBooleanPreference('projectSidebarOpen', true)
   const notFound = query.isError && isProjectNotFound(query.error)
   const project = notFound ? undefined : query.data
+  useDocumentTitle(notFound ? 'Project not found' : project?.name, workspace?.name)
+  if (!workspace || !projectId) return null
 
-  let main
+  // The header comes before the sidebar, so the page's h1 is its first heading.
+  let header
+  let body = null
   if (notFound) {
-    main = <ProjectNotFound workspace={workspace} />
+    header = <ProjectNotFound workspace={workspace} />
   } else if (project) {
-    main = (
-      <>
-        <ProjectHeader project={project} canManage={can(workspace.my_role, 'project.manage')} />
-        <Outlet />
-      </>
-    )
+    header = <ProjectHeader project={project} canManage={can(workspace.my_role, 'project.manage')} />
+    body = <Outlet />
   } else if (query.isError) {
-    main = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void query.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load the project. {query.error.message}
-      </StatusMessage>
-    )
+    header = <ErrorState message="Could not load the project." error={query.error} onRetry={() => void query.refetch()} />
   } else {
-    main = <StatusMessage>Loading project...</StatusMessage>
+    header = (
+      <LoadingSkeleton label="Loading project..." className="project-header-skeleton">
+        <Skeleton width="16rem" height="2rem" />
+        <Skeleton width="24rem" />
+      </LoadingSkeleton>
+    )
   }
 
   const crumbs: Crumb[] = [
@@ -61,11 +57,12 @@ export function ProjectLayout() {
   return (
     <div className="page page--wide project-layout">
       <Breadcrumbs items={crumbs} />
-      <div className="project-layout__body">
-        <ProjectSidebar workspace={workspace} currentProject={project} />
+      {/* Keyed: moving to another project starts its dialogs over. */}
+      <Fragment key={projectId}>{header}</Fragment>
+      <div className={`project-layout__body${sidebarOpen ? '' : ' project-layout__body--collapsed'}`}>
+        <ProjectSidebar workspace={workspace} currentProject={project} open={sidebarOpen} onToggle={setSidebarOpen} />
         <div className="project-layout__main">
-          {/* Keyed: moving to another project starts its dialogs over. */}
-          <Fragment key={projectId}>{main}</Fragment>
+          <Fragment key={projectId}>{body}</Fragment>
         </div>
       </div>
     </div>

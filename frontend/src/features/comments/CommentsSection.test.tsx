@@ -208,6 +208,21 @@ describe('thread', () => {
 })
 
 describe('composer', () => {
+  it('keeps the drawer open on Escape while a comment is half written; on an empty box Escape closes it', async () => {
+    const user = userEvent.setup()
+    renderTask('ben', tasks.web4)
+    const { dialog, thread } = await openThread('Set up analytics')
+
+    await user.type(composer(thread), 'Half a thought')
+    await user.keyboard('{Escape}')
+    expect(dialog).toBeInTheDocument()
+    expect(composer(thread)).toHaveValue('Half a thought')
+
+    await user.clear(composer(thread))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
   it.each<[Who, string]>([
     ['asha', 'owner'],
     ['dana', 'admin'],

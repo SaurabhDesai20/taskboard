@@ -31,6 +31,27 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(default=10080, gt=0)
     cookie_secure: bool = False
 
+    # Auth rate limits (docs/api-contract.md section 1.5, 429 `rate_limited`), per minute over a
+    # sliding window, in this process. 0 turns a limit off (the test suite does that).
+    # Requests per client IP to each of POST /auth/login and POST /auth/register:
+    auth_rate_limit_per_minute: int = Field(default=20, ge=0)
+    # Login attempts per client IP and email together:
+    auth_rate_limit_per_email_per_minute: int = Field(default=10, ge=0)
+
+    # The built React app (scripts\build.ps1). A relative path is relative to the repo root.
+    frontend_dist_dir: Path = REPO_ROOT / "frontend" / "dist"
+
+    @property
+    def hsts_enabled(self) -> bool:
+        """Send Strict-Transport-Security only where the app is served over HTTPS."""
+        return self.cookie_secure or self.app_env == "production"
+
+    @model_validator(mode="after")
+    def _resolve_frontend_dist_dir(self) -> Self:
+        if not self.frontend_dist_dir.is_absolute():
+            self.frontend_dist_dir = REPO_ROOT / self.frontend_dist_dir
+        return self
+
     @model_validator(mode="after")
     def _require_strong_secret_in_production(self) -> Self:
         if (

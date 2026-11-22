@@ -9,6 +9,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import type { CommentCreate, CommentPage, CommentRead, Task, UserRef, UUID } from '../../api/types'
+import { useErrorToastWhenUnmounted, useToast } from '../../components/toastContext'
 import { taskKeys } from '../tasks/hooks'
 import { refreshActivity, refreshAfterConflict, workspaceKeys } from '../workspaces/hooks'
 import { commentsApi } from './api'
@@ -130,6 +131,7 @@ interface CreateContext {
  */
 export function useCreateComment(task: TaskIds, author: UserRef | undefined) {
   const queryClient = useQueryClient()
+  const reportIfClosed = useErrorToastWhenUnmounted()
   const threadKey = commentKeys.thread(task.workspace_id, task.id)
   return useMutation<CommentRead, Error, CommentCreate, CreateContext>({
     mutationFn: (body) => commentsApi.create(task.id, body),
@@ -171,6 +173,8 @@ export function useCreateComment(task: TaskIds, author: UserRef | undefined) {
       if (pendingId) updateThread(queryClient, task, (pages) => removeComment(pages, pendingId))
       // 409 project_archived refetches the project too, so the composer turns read-only.
       refreshAfterConflict(queryClient, task.workspace_id, error)
+      // The composer shows the error and gives the text back; if the drawer was closed, a toast says it.
+      reportIfClosed('Your comment was not posted.', error)
     },
   })
 }
@@ -183,13 +187,17 @@ export interface UpdateCommentVariables {
 /** Edits a comment (author only); the thread shows the server's copy with `edited_at`. */
 export function useUpdateComment(task: TaskIds) {
   const queryClient = useQueryClient()
+  const reportIfClosed = useErrorToastWhenUnmounted()
   return useMutation({
     mutationFn: ({ commentId, body }: UpdateCommentVariables) => commentsApi.update(commentId, { body }),
     onSuccess: (comment) => {
       updateThread(queryClient, task, (pages) => replaceComment(pages, comment.id, comment))
       refreshActivity(queryClient, task.workspace_id)
     },
-    onError: (error) => refreshAfterConflict(queryClient, task.workspace_id, error),
+    onError: (error) => {
+      refreshAfterConflict(queryClient, task.workspace_id, error)
+      reportIfClosed('Your comment was not saved.', error)
+    },
   })
 }
 
@@ -199,14 +207,20 @@ export function useUpdateComment(task: TaskIds) {
  */
 export function useDeleteComment(task: TaskIds, { onDeleted }: { onDeleted?: () => void } = {}) {
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const reportIfClosed = useErrorToastWhenUnmounted()
   return useMutation({
     mutationFn: (commentId: UUID) => commentsApi.remove(commentId),
     onSuccess: (_result, commentId) => {
       updateThread(queryClient, task, (pages) => removeComment(pages, commentId))
       adjustCommentCount(queryClient, task, -1)
       refreshActivity(queryClient, task.workspace_id)
+      toast.success('Deleted the comment.')
       onDeleted?.()
     },
-    onError: (error) => refreshAfterConflict(queryClient, task.workspace_id, error),
+    onError: (error) => {
+      refreshAfterConflict(queryClient, task.workspace_id, error)
+      reportIfClosed('The comment was not deleted.', error)
+    },
   })
 }

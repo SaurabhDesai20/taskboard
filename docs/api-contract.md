@@ -87,9 +87,9 @@ Every non-2xx response uses this envelope:
 | 405 | `method_not_allowed` | Wrong HTTP method for an existing path |
 | 409 | `conflict` | Duplicate or state conflict (see `details.reason`) |
 | 422 | `validation_error` | Body, query or path values fail validation (see 1.5.1) |
-| 429 | `rate_limited` | Too many auth attempts (Phase 7). Response has a `Retry-After` header (seconds). |
+| 429 | `rate_limited` | Too many register or login attempts (see 1.5.2). Response has a `Retry-After` header (seconds). |
 | 500 | `internal_error` | Unexpected server error |
-| 503 | `service_unavailable` | Health check: database unreachable |
+| 503 | `service_unavailable` | Health check: database unreachable. Also a non-API page when the UI is not built (1.11) |
 
 `details.reason` values:
 
@@ -129,6 +129,30 @@ Every non-2xx response uses this envelope:
 
 - `field` is the dotted path inside its location (`"title"`, `"items.0.name"`). It is `""` when the whole body is invalid.
 - `location` is one of `body`, `query`, `path`, `header`, `cookie`.
+
+#### 1.5.2 Rate limits (429, Phase 7, implemented)
+
+`POST /auth/register` and `POST /auth/login` are rate-limited per client IP, over a sliding 60-second window:
+
+| Limit | Default | Counts |
+|---|---|---|
+| Requests per client IP, to each of the two endpoints | 20 per minute (`AUTH_RATE_LIMIT_PER_MINUTE`) | Every request that passes the CSRF check, before body validation: `422`s, `401`s and successes all count |
+| Login attempts per client IP **and** email | 10 per minute (`AUTH_RATE_LIMIT_PER_EMAIL_PER_MINUTE`) | Every login with a valid body, matched on the normalized (trimmed, lowercase) email, successful or not |
+
+Over a limit, the request is refused before the password is checked (so even the right password gets the `429`) and no cookie is set. A refused request does not count against the limit that refused it, so waiting `Retry-After` seconds is always enough:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+```
+
+```json
+{ "error": { "code": "rate_limited", "message": "Too many attempts. Try again in 42 seconds.", "details": {} } }
+```
+
+- `Retry-After` is a whole number of seconds (1 to 60) until the next attempt is allowed; the message repeats it.
+- Order of checks on login: CSRF `403`, per-IP `429`, `422`, per-IP-and-email `429`, then `401` or `200`. Register: CSRF `403`, per-IP `429`, `422`, `409`, `201`.
+- The counts live in the server process: a restart resets them. `0` turns a limit off.
 
 ### 1.6 Pagination (comments and activity only)
 
@@ -216,6 +240,16 @@ Membership rules:
 - Any member may leave (`DELETE` their own membership), except the last owner (`409 last_owner`).
 
 Archived projects are read-only for tasks and comments. Creating, updating or moving tasks, and creating or editing comments, returns `409 project_archived`. Deleting tasks and comments is still allowed.
+
+### 1.11 Request IDs and response headers (Phase 7, implemented)
+
+Every response, errors included, carries `X-Request-ID`. A client may send its own `X-Request-ID` (1 to 128 characters from `A-Z a-z 0-9 . _ : -`); the server then uses and returns it unchanged. Otherwise, or when the value does not match, the server generates one (32 lowercase hex characters). The id is on every server log line of that request, so the UI can show it on a `500` ("error id") to find the logs.
+
+Every response also carries security headers: `Content-Security-Policy` (`default-src 'self'`, no inline or remote scripts, inline styles allowed; Swagger UI at `/api/docs` gets a relaxed policy for its CDN assets), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin`, and `Strict-Transport-Security` when served over HTTPS (`COOKIE_SECURE=true` or `APP_ENV=production`).
+
+There is no CORS: the UI and the API share one origin (the Vite dev server proxies `/api`), so responses never carry `Access-Control-Allow-*` headers and cross-origin preflights fail.
+
+Outside `/api`, the server serves the built UI (`frontend/dist`): existing files as they are (`/assets/*` cached as immutable) and `index.html` for every other `GET` path, so deep links work on refresh. Unknown `/api` paths still get the JSON `404` envelope. Without a build, non-API pages get `503 service_unavailable` with a message saying how to build it.
 
 ---
 
@@ -413,6 +447,7 @@ Request (`RegisterRequest`):
 Errors:
 - `409 conflict` with `details.reason = "email_taken"`. Message: `"An account with this email already exists"`. Emails are compared case-insensitively, so `ASHA@example.com` conflicts with `asha@example.com`.
 - `422` for an invalid email, a name or password out of range.
+- `429 rate_limited` with `Retry-After` (section 1.5.2).
 
 #### `POST /auth/login` (public)
 
@@ -427,7 +462,7 @@ Request (`LoginRequest`; the email is matched case-insensitively):
 Errors:
 - `401 unauthorized`, message `"Invalid email or password"`. The same response is used for an unknown email and a wrong password.
 - `422`.
-- `429` (Phase 7).
+- `429 rate_limited` with `Retry-After` (section 1.5.2), also with the right password.
 
 #### `POST /auth/logout` (auth)
 

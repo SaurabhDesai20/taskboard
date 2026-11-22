@@ -25,13 +25,13 @@ describe('home: the workspace list', () => {
     const user = userEvent.setup()
     const { router } = renderAs('asha', '/')
 
-    const main = screen.getByRole('main')
-    const acme = await within(main).findByRole('link', { name: /Acme/ })
+    const section = await screen.findByRole('region', { name: 'Your workspaces' })
+    const acme = await within(section).findByRole('link', { name: /Acme/ })
     expect(acme).toHaveTextContent('Acme/w/acmeOwner')
-    const links = within(main).getAllByRole('link')
+    const links = within(section).getAllByRole('link')
     expect(links.map((link) => link.getAttribute('href'))).toEqual(['/w/acme', '/w/globex'])
     expect(links[1]).toHaveTextContent('Member')
-    expect(within(main).getByRole('button', { name: 'Create workspace' })).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: 'Create workspace' })).toBeInTheDocument()
 
     await user.click(acme)
     expect(router.state.location.pathname).toBe('/w/acme')

@@ -23,19 +23,39 @@ export class ApiError extends Error {
   readonly status: number
   readonly code: ApiErrorCode | ClientErrorCode
   readonly details: Record<string, unknown>
+  /** Seconds to wait before retrying, from the `Retry-After` header (429 `rate_limited`); null without one. */
+  readonly retryAfter: number | null
 
   constructor(
     status: number,
     code: ApiErrorCode | ClientErrorCode,
     message: string,
     details: Record<string, unknown> = {},
+    retryAfter: number | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.details = details
+    this.retryAfter = retryAfter
   }
+}
+
+/**
+ * A `Retry-After` header as whole seconds from now: either delay-seconds ("120") or an HTTP date.
+ * Null when it is missing or unreadable.
+ */
+export function parseRetryAfter(value: string | null, now: number = Date.now()): number | null {
+  const text = value?.trim()
+  if (!text) return null
+  if (/^\d+$/.test(text)) return Number(text)
+  // HTTP dates start with the day's name ("Sun, 22 Nov 2026 10:00:00 GMT"); Date.parse alone
+  // would also accept things like "-5".
+  if (!/^[A-Za-z]{3}/.test(text)) return null
+  const date = Date.parse(text)
+  if (Number.isNaN(date)) return null
+  return Math.max(0, Math.ceil((date - now) / 1000))
 }
 
 type UnauthorizedHandler = () => void
@@ -130,14 +150,17 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (response.status === 401 && !options.skipAuthRedirect) {
       unauthorizedHandler()
     }
+    const retryAfter = parseRetryAfter(response.headers.get('Retry-After'))
     if (parsed.ok && isErrorEnvelope(parsed.value)) {
       const { code, message, details } = parsed.value.error
-      throw new ApiError(response.status, code, message, details)
+      throw new ApiError(response.status, code, message, details, retryAfter)
     }
     throw new ApiError(
       response.status,
-      'unknown_error',
+      response.status === 429 ? 'rate_limited' : 'unknown_error',
       response.statusText || `Request failed with status ${response.status}`,
+      {},
+      retryAfter,
     )
   }
 

@@ -263,3 +263,60 @@ Run-wide decisions:
 **Open issues**
 - The `actor_id` filter has no dedicated index (Phase 7 index review).
 - Infinite scroll is only tested with a fake IntersectionObserver.
+
+## Phase 7: Polish, Hardening, Single-Process Serving
+
+**Built**
+- Backend:
+  - In-memory sliding-window rate limits on login and register: per IP for each endpoint, plus per IP and email for login. Over the limit: `429 rate_limited` with `Retry-After`.
+  - Request IDs: an incoming `X-Request-ID` is accepted or one is generated. It comes back on every response (errors too) and is on every log line. One access line per request.
+  - Security headers: nosniff, `Referrer-Policy: same-origin`, frame protection, `Permissions-Policy`, and a CSP that works for the built SPA (relaxed only on `/api/docs`). HSTS only when `COOKIE_SECURE` or production. No CORS.
+  - FastAPI serves `frontend/dist` with an SPA fallback for GET/HEAD outside `/api`. A missing build gives a 503 saying how to build it.
+  - Idempotent `python -m app.seed` that writes through the services, so activity entries exist too.
+  - EXPLAIN index review: one new index for the activity `actor_id` filter (28.6 ms to 0.06 ms). The other list queries were already index-served.
+  - `backend/README.md`.
+- UI:
+  - Accessible toasts, a root error boundary and router error pages.
+  - Skeleton loaders that respect reduced motion.
+  - Responsive layout down to 768px.
+  - Dark mode: follows the system, with a toggle kept in `localStorage` (UI preference only).
+  - Dashboard at `/` with My overdue and Due this week tasks.
+  - Accessibility pass: skip link, a title on every page, and focus no longer lost after removals, deletes or role-change closes.
+  - The 429 wait message on login and register uses `Retry-After`.
+  - Shared empty and error states.
+  - Tests for the role × control matrix and the keyboard Kanban.
+  - `frontend/README.md`.
+- Integration:
+  - `scripts/seed.ps1` added.
+  - `.env.example` gains `AUTH_RATE_LIMIT_PER_MINUTE`, `AUTH_RATE_LIMIT_PER_EMAIL_PER_MINUTE` and `FRONTEND_DIST_DIR`.
+  - Root README: seven-command quick start, demo logins, and links to the backend and frontend READMEs.
+  - `start.ps1` comment updated.
+  - CLAUDE.md corrected:
+    - The gates take an action id.
+    - `start.ps1` serves the built UI.
+    - Mocking has been off since Phase 1.
+    - Added the seed row and the "run tests in the foreground" note.
+
+**Tested**
+- `lint.ps1` is clean.
+- `test.ps1`: 1383 backend tests and 805 frontend tests pass.
+- Full live smoke check through the Vite proxy: 135/135, covering every phase plus request IDs, security headers, no CORS, and a login burst giving 429 `rate_limited` with `Retry-After`.
+
+**Decisions**
+- The request-ID middleware answers unhandled errors itself, so 500s keep their headers.
+- Swagger's OAuth2 redirect page is turned off: it lived outside `/api`, and cookie auth doesn't use it.
+- No `workspace_id` indexes on tasks or comments. Deleting a workspace scans both tables; the trade-off is written up in `backend/README.md`.
+- Demo users are `@acme.example.com`, with the password `taskboard-demo`.
+- The dashboard and My Tasks share one request and cache.
+- A subagent overwrote the orchestrator's scratch smoke script (the subagents share the scratchpad). It was rebuilt in its own folder; no project files were affected.
+- No new libraries.
+
+**Open issues**
+- The dev database needs `.\scripts\migrate.ps1` (all migrations, including the Phase 7 index) and, optionally, `.\scripts\seed.ps1`.
+- Nothing was tried in a real browser: the 768px layout, dark-mode colours, mouse drag and real infinite scroll are untested there.
+- If the inline Add-task form is closed while its request is in flight, a later failure isn't shown.
+- The UI doesn't show `X-Request-ID` on 500 errors.
+- Earlier UI open issues still stand:
+  - A project whose request fails can show its cached copy.
+  - A just-posted comment can drop out of view after a refetch.
+  - My Tasks has no comment counts.

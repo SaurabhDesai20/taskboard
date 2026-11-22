@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../mocks/server'
-import { api, ApiError, setUnauthorizedHandler } from './client'
+import { api, ApiError, parseRetryAfter, setUnauthorizedHandler } from './client'
 
 describe('api client', () => {
   it('returns parsed JSON and always sends cookies', async () => {
@@ -130,5 +130,47 @@ describe('api client', () => {
     } finally {
       setUnauthorizedHandler(previous)
     }
+  })
+
+  it('reads Retry-After (seconds) into the error of a 429 rate_limited answer', async () => {
+    server.use(
+      http.post('/api/auth/login', () =>
+        HttpResponse.json(
+          { error: { code: 'rate_limited', message: 'Too many attempts', details: {} } },
+          { status: 429, headers: { 'Retry-After': '42' } },
+        ),
+      ),
+    )
+
+    await expect(api.post('/auth/login', {})).rejects.toMatchObject({
+      status: 429,
+      code: 'rate_limited',
+      retryAfter: 42,
+    })
+  })
+
+  it('treats a 429 without the envelope as rate_limited, and no Retry-After as null', async () => {
+    server.use(http.post('/api/auth/login', () => new HttpResponse('slow down', { status: 429 })))
+
+    await expect(api.post('/auth/login', {})).rejects.toMatchObject({ code: 'rate_limited', retryAfter: null })
+  })
+})
+
+describe('parseRetryAfter', () => {
+  const now = Date.parse('2026-11-22T10:00:00Z')
+
+  it.each([
+    ['120', 120],
+    [' 5 ', 5],
+    ['0', 0],
+    ['Sun, 22 Nov 2026 10:01:30 GMT', 90],
+    // A date in the past means "now".
+    ['Sun, 22 Nov 2026 09:00:00 GMT', 0],
+  ])('reads %j as %i seconds', (value, seconds) => {
+    expect(parseRetryAfter(value, now)).toBe(seconds)
+  })
+
+  it.each([null, '', 'soon', '-5', '1.5'])('gives null for %j', (value) => {
+    expect(parseRetryAfter(value, now)).toBeNull()
   })
 })

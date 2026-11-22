@@ -87,7 +87,11 @@ const CASES: Case[] = [
   mutationCase('archive project', () => useArchiveProject(website), () => undefined),
   mutationCase('add member', () => useAddMember(acme.id), () => ({ email: 'eve@example.com', role: 'viewer' as const })),
   mutationCase('change role', () => useChangeMemberRole(acme.id), () => ({ userId: ben.id, role: 'viewer' as const })),
-  mutationCase('remove member', () => useRemoveMember(acme.id), () => ben.id),
+  mutationCase(
+    'remove member',
+    () => useRemoveMember(acme.id),
+    () => ({ user_id: ben.id, email: ben.email, name: ben.name, role: 'member' as const, joined_at: ben.created_at }),
+  ),
   mutationCase('rename workspace', () => useRenameWorkspace(acme.id), () => 'Acme Inc'),
 ]
 

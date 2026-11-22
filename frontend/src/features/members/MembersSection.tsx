@@ -1,5 +1,8 @@
+import { useRef } from 'react'
 import type { Workspace } from '../../api/types'
-import { StatusMessage } from '../../components/StatusMessage'
+import { EmptyState } from '../../components/EmptyState'
+import { ErrorState } from '../../components/ErrorState'
+import { ListSkeleton } from '../../components/Skeleton'
 import { countOwners } from '../../lib/permissions'
 import { useMe } from '../auth/hooks'
 import { Can } from '../workspaces/Can'
@@ -12,25 +15,15 @@ import './members.css'
 export function MembersSection({ workspace }: { workspace: Workspace }) {
   const me = useMe()
   const members = useMembers(workspace.id)
+  const headingRef = useRef<HTMLHeadingElement>(null)
 
   let content
   if (members.isPending) {
-    content = <StatusMessage>Loading members...</StatusMessage>
+    content = <ListSkeleton label="Loading members..." rows={4} avatar />
   } else if (members.isError) {
-    content = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void members.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load the members. {members.error.message}
-      </StatusMessage>
-    )
+    content = <ErrorState message="Could not load the members." error={members.error} onRetry={() => void members.refetch()} />
   } else if (members.data.length === 0) {
-    content = <p className="empty-state">This workspace has no members.</p>
+    content = <EmptyState title="This workspace has no members." />
   } else {
     const actor = { userId: me.data?.id ?? '', role: workspace.my_role }
     const ownerCount = countOwners(members.data)
@@ -57,6 +50,7 @@ export function MembersSection({ workspace }: { workspace: Workspace }) {
                 workspace={workspace}
                 actor={actor}
                 ownerCount={ownerCount}
+                listHeadingRef={headingRef}
               />
             ))}
           </tbody>
@@ -67,7 +61,9 @@ export function MembersSection({ workspace }: { workspace: Workspace }) {
 
   return (
     <section className="workspace-section" aria-labelledby="members-title">
-      <h2 id="members-title">Members</h2>
+      <h2 id="members-title" ref={headingRef} tabIndex={-1}>
+        Members
+      </h2>
       <Can action="member.manage">
         <AddMemberForm workspace={workspace} />
       </Can>

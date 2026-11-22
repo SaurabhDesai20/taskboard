@@ -1,7 +1,9 @@
 import { Fragment } from 'react'
 import { Link, NavLink, Outlet } from 'react-router'
+import { ErrorState } from '../../components/ErrorState'
 import { RoleBadge } from '../../components/RoleBadge'
-import { StatusMessage } from '../../components/StatusMessage'
+import { LoadingSkeleton, Skeleton } from '../../components/Skeleton'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { useCurrentWorkspace } from './hooks'
 import './workspaces.css'
 
@@ -14,31 +16,18 @@ export function WorkspaceRoute() {
   const { workspace, query } = useCurrentWorkspace()
 
   if (!workspace) {
-    if (query.isPending) return <StatusMessage>Loading workspace...</StatusMessage>
-    if (query.isError) {
+    if (query.isPending) {
       return (
-        <StatusMessage
-          tone="error"
-          action={
-            <button type="button" className="button" onClick={() => void query.refetch()}>
-              Try again
-            </button>
-          }
-        >
-          Could not load the workspace. {query.error.message}
-        </StatusMessage>
+        <LoadingSkeleton label="Loading workspace..." className="page">
+          <Skeleton width="12rem" height="2rem" />
+          <Skeleton width="18rem" />
+        </LoadingSkeleton>
       )
     }
-    // Same answer whether it does not exist or the user is not a member (like the API's 404).
-    return (
-      <section className="page" aria-labelledby="workspace-missing-title">
-        <h1 id="workspace-missing-title">Workspace not found</h1>
-        <p>It does not exist, or you are not a member of it.</p>
-        <p>
-          <Link to="/">Back to your workspaces</Link>
-        </p>
-      </section>
-    )
+    if (query.isError) {
+      return <ErrorState message="Could not load the workspace." error={query.error} onRetry={() => void query.refetch()} />
+    }
+    return <WorkspaceNotFound />
   }
 
   // Keyed: switching workspaces on the same page starts its forms and dialogs over.
@@ -46,6 +35,20 @@ export function WorkspaceRoute() {
     <Fragment key={workspace.id}>
       <Outlet />
     </Fragment>
+  )
+}
+
+/** Same answer whether it does not exist or the user is not a member (like the API's 404). */
+function WorkspaceNotFound() {
+  useDocumentTitle('Workspace not found')
+  return (
+    <section className="page" aria-labelledby="workspace-missing-title">
+      <h1 id="workspace-missing-title">Workspace not found</h1>
+      <p>It does not exist, or you are not a member of it.</p>
+      <p>
+        <Link to="/">Back to your workspaces</Link>
+      </p>
+    </section>
   )
 }
 

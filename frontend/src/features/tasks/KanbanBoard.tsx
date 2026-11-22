@@ -19,6 +19,7 @@ import {
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useCallback, useId, useMemo, useState, type ReactElement, type ReactNode } from 'react'
 import type { Project, Task, TaskMoveRequest, TaskStatus, UUID } from '../../api/types'
+import { LoadingSkeleton, Skeleton } from '../../components/Skeleton'
 import { todayDateOnly } from '../../lib/dates'
 import { CreateTaskForm } from './CreateTaskForm'
 import { useMoveTask } from './hooks'
@@ -63,7 +64,8 @@ interface DragState {
 /**
  * The Kanban board: one column per status with its count, cards in position order. Members drag
  * cards within and between columns (mouse or touch) or use each card's Move menu (keyboard).
- * Both send the same optimistic move; a failed move snaps back and says why.
+ * Both send the same optimistic move; a failed move snaps back and an error toast says why. On
+ * narrow screens the columns scroll sideways.
  */
 export function KanbanBoard({ project, tasks, statuses, canWrite, filtered, hrefFor }: KanbanBoardProps) {
   const move = useMoveTask(project)
@@ -182,15 +184,9 @@ export function KanbanBoard({ project, tasks, statuses, canWrite, filtered, href
   }
 
   const activeTask = drag?.activeId ? byId.get(drag.activeId) : undefined
-  const failedMove = move.isError ? move.variables : undefined
 
   return (
     <>
-      {failedMove && move.error ? (
-        <div className="alert alert--error board__error" role="alert">
-          Could not move {failedMove.task.key}. {move.error.message}
-        </div>
-      ) : null}
       <p className="visually-hidden" aria-live="polite">
         {announcement}
       </p>
@@ -233,6 +229,28 @@ export function KanbanBoard({ project, tasks, statuses, canWrite, filtered, href
         <DragOverlay>{activeTask ? <TaskCardPreview task={activeTask} today={today} /> : null}</DragOverlay>
       </DndContext>
     </>
+  )
+}
+
+/** The board's shape while its tasks load: the columns with a few placeholder cards. */
+export function BoardSkeleton({ statuses }: { statuses: readonly TaskStatus[] }) {
+  return (
+    <LoadingSkeleton label="Loading tasks...">
+      <div className="board" data-columns={statuses.length}>
+        {statuses.map((status, index) => (
+          <div key={status} className="board-column">
+            <span className="board-column__title">{STATUS_LABELS[status]}</span>
+            {Array.from({ length: 3 - (index % 2) }, (_, card) => (
+              <div key={card} className="skeleton-task-card">
+                <Skeleton width="30%" height="0.75rem" />
+                <Skeleton width={card % 2 === 0 ? '85%' : '65%'} />
+                <Skeleton width="45%" height="0.75rem" />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </LoadingSkeleton>
   )
 }
 

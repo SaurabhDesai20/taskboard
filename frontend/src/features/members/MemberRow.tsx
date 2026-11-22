@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState, type RefObject } from 'react'
 import type { Member, Role, UUID, Workspace } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { RoleBadge } from '../../components/RoleBadge'
@@ -12,10 +12,12 @@ interface MemberRowProps {
   /** The signed-in user. */
   actor: MemberActor
   ownerCount: number
+  /** The members list's heading: focus goes there once this row is removed. */
+  listHeadingRef: RefObject<HTMLElement | null>
 }
 
 /** One member: role (a dropdown when the actor may change it), joined date, remove or leave. */
-export function MemberRow({ member, workspace, actor, ownerCount }: MemberRowProps) {
+export function MemberRow({ member, workspace, actor, ownerCount, listHeadingRef }: MemberRowProps) {
   const isMe = member.user_id === actor.userId
   const roleOptions = roleOptionsFor(actor, member)
   const changeRole = useChangeMemberRole(workspace.id)
@@ -27,7 +29,7 @@ export function MemberRow({ member, workspace, actor, ownerCount }: MemberRowPro
   if (isMe) {
     action = <LeaveWorkspace workspace={workspace} userId={actor.userId} canLeave={canLeaveWorkspace(member.role, ownerCount)} />
   } else if (canRemoveMember(actor, member)) {
-    action = <RemoveMember workspace={workspace} member={member} />
+    action = <RemoveMember workspace={workspace} member={member} listHeadingRef={listHeadingRef} />
   }
 
   return (
@@ -71,13 +73,27 @@ export function MemberRow({ member, workspace, actor, ownerCount }: MemberRowPro
   )
 }
 
-function RemoveMember({ workspace, member }: { workspace: Workspace; member: Member }) {
+interface RemoveMemberProps {
+  workspace: Workspace
+  member: Member
+  listHeadingRef: RefObject<HTMLElement | null>
+}
+
+function RemoveMember({ workspace, member, listHeadingRef }: RemoveMemberProps) {
   const [confirming, setConfirming] = useState(false)
   const remove = useRemoveMember(workspace.id)
+  // Empty while open (Cancel goes back to "Remove"); after a removal, the list's heading, since
+  // the row and its button are going away.
+  const returnFocus = useRef<HTMLElement | null>(null)
 
   function cancel() {
     setConfirming(false)
     remove.reset()
+  }
+
+  function removed() {
+    returnFocus.current = listHeadingRef.current
+    setConfirming(false)
   }
 
   return (
@@ -93,8 +109,9 @@ function RemoveMember({ workspace, member }: { workspace: Workspace; member: Mem
           pendingLabel="Removing..."
           pending={remove.isPending}
           error={remove.isError ? remove.error.message : null}
-          onConfirm={() => remove.mutate(member.user_id, { onSuccess: () => setConfirming(false) })}
+          onConfirm={() => remove.mutate(member, { onSuccess: removed })}
           onCancel={cancel}
+          returnFocusRef={returnFocus}
         >
           <p>
             {member.name} will lose access to {workspace.name}. You can add them again later.

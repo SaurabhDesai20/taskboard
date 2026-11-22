@@ -12,6 +12,19 @@ export interface FormErrors<F extends string> {
 
 export const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.'
 
+/** "45 seconds", "1 minute", "3 minutes" (minutes rounded up). */
+export function formatWait(seconds: number): string {
+  if (seconds < 60) return seconds === 1 ? '1 second' : `${seconds} seconds`
+  const minutes = Math.ceil(seconds / 60)
+  return minutes === 1 ? '1 minute' : `${minutes} minutes`
+}
+
+/** What a 429 `rate_limited` (contract 1.5) tells the user, with the wait from `Retry-After`. */
+export function rateLimitMessage(retryAfter: number | null): string {
+  if (retryAfter === null || retryAfter <= 0) return 'Too many attempts. Please wait a moment and try again.'
+  return `Too many attempts. Please wait ${formatWait(retryAfter)} and try again.`
+}
+
 interface FormErrorOptions<F extends string> {
   /** Field names the form renders; 422 entries for other fields go to the form-level message. */
   fields: readonly F[]
@@ -42,6 +55,10 @@ export function formErrorsFromError<F extends string>(
 ): FormErrors<F> {
   if (!(error instanceof ApiError)) {
     return { fields: {}, form: GENERIC_ERROR_MESSAGE }
+  }
+
+  if (error.status === 429) {
+    return { fields: {}, form: rateLimitMessage(error.retryAfter) }
   }
 
   const reason = error.details.reason

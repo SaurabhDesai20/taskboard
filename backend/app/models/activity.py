@@ -107,3 +107,13 @@ Index(
     ActivityLog.created_at.desc(),
     ActivityLog.id.desc(),
 )
+# The actor filter (backend/README.md, "Index review"). Without it the feed index walks the
+# whole workspace for an actor with few entries. Leads with workspace_id because an actor's
+# entries span workspaces and the feed is always scoped to one.
+Index(
+    "ix_activity_logs_workspace_id_actor_id_created_at_id",
+    ActivityLog.workspace_id,
+    ActivityLog.actor_id,
+    ActivityLog.created_at.desc(),
+    ActivityLog.id.desc(),
+)

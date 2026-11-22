@@ -28,6 +28,8 @@ class DomainError(Exception):
     def __init__(self, message: str | None = None, details: dict[str, Any] | None = None) -> None:
         self.message = message or self.default_message
         self.details: dict[str, Any] = details or {}
+        # Extra response headers (e.g. Retry-After on a 429).
+        self.headers: dict[str, str] = {}
         super().__init__(self.message)
 
 
@@ -68,6 +70,20 @@ class Conflict(DomainError):
     default_message = "Conflict"
 
 
+class RateLimited(DomainError):
+    """429 with a `Retry-After` header: the whole seconds until the next attempt is allowed."""
+
+    status_code = 429
+    code = "rate_limited"
+    default_message = "Too many attempts. Try again later."
+
+    def __init__(self, retry_after: int) -> None:
+        self.retry_after = max(1, retry_after)
+        unit = "second" if self.retry_after == 1 else "seconds"
+        super().__init__(f"Too many attempts. Try again in {self.retry_after} {unit}.")
+        self.headers = {"Retry-After": str(self.retry_after)}
+
+
 class ServiceUnavailable(DomainError):
     status_code = 503
     code = "service_unavailable"
@@ -104,7 +120,9 @@ def error_response(
 
 def _handle_domain_error(_request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, DomainError)
-    return error_response(exc.status_code, exc.code, exc.message, exc.details)
+    return error_response(
+        exc.status_code, exc.code, exc.message, exc.details, headers=exc.headers or None
+    )
 
 
 def _handle_request_validation_error(_request: Request, exc: Exception) -> JSONResponse:

@@ -4,6 +4,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { TextField } from '../../components/TextField'
 import { formErrorsFromError } from '../../lib/formErrors'
 import { useForm } from '../../lib/useForm'
+import { useDocumentTitle } from '../../lib/useDocumentTitle'
 import { MembersSection } from '../members/MembersSection'
 import { Can } from './Can'
 import { useCurrentWorkspace, useDeleteWorkspace, useRenameWorkspace } from './hooks'
@@ -12,6 +13,7 @@ import { validateWorkspaceName } from './validation'
 /** `/w/:slug/settings`: workspace details (rename for owners), members, and delete for owners. */
 export function WorkspaceSettingsPage() {
   const { workspace } = useCurrentWorkspace()
+  useDocumentTitle('Settings', workspace?.name)
   if (!workspace) return null
 
   return (

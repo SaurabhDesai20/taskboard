@@ -13,6 +13,7 @@ import {
 } from '../../mocks/db'
 import { server } from '../../mocks/server'
 import { renderRoute } from '../../test/render'
+import { findToast } from '../../test/toasts'
 
 const { acme } = MOCK_WORKSPACES
 
@@ -158,7 +159,7 @@ describe('delete (owner)', () => {
     expect(findWorkspace(acme.id)).toBeDefined()
   })
 
-  it('deletes the workspace and goes home with a notice', async () => {
+  it('deletes the workspace and goes home with a toast that does not come back', async () => {
     const user = userEvent.setup()
     const { router } = renderSettingsAs('asha')
 
@@ -166,10 +167,12 @@ describe('delete (owner)', () => {
     const dialog = screen.getByRole('dialog', { name: 'Delete Acme?' })
     await user.click(within(dialog).getByRole('button', { name: 'Delete workspace' }))
 
-    expect(await screen.findByText('Deleted the workspace Acme.')).toBeInTheDocument()
+    expect(await findToast('Deleted the workspace Acme.')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
-    const main = screen.getByRole('main')
-    expect(within(main).getAllByRole('link').map((link) => link.textContent)).toEqual(['Globex/w/globexMember'])
+    // Unlike the old notice in router state, nothing is left for a reload to show again.
+    expect(router.state.location.state).toBeNull()
+    const workspaces = screen.getByRole('region', { name: 'Your workspaces' })
+    expect(within(workspaces).getAllByRole('link').map((link) => link.textContent)).toEqual(['Globex/w/globexMember'])
     expect(findWorkspace(acme.id)).toBeUndefined()
     expect(db.members.some((member) => member.workspace_id === acme.id)).toBe(false)
   })

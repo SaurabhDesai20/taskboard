@@ -14,6 +14,7 @@ import {
 } from '../../mocks/db'
 import { server } from '../../mocks/server'
 import { renderRoute } from '../../test/render'
+import { findToast } from '../../test/toasts'
 
 const { acme } = MOCK_WORKSPACES
 const { website, mobile, legacy } = MOCK_PROJECTS
@@ -383,14 +384,13 @@ describe('archive project', () => {
     expect(findProject(website.id)?.archived_at).toBeNull()
   })
 
-  it('archives the project: it leaves the grid and a confirmation takes focus', async () => {
+  it('archives the project: it leaves the grid, a toast confirms and focus moves to the Projects heading', async () => {
     const { user, dialog } = await openArchiveDialog()
 
     await user.click(within(dialog).getByRole('button', { name: 'Archive project' }))
 
-    const notice = await within(projectsRegion()).findByRole('status')
-    expect(notice).toHaveTextContent('Archived Website.')
-    await waitFor(() => expect(notice).toHaveFocus())
+    expect(await findToast('Archived Website.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Projects' })).toHaveFocus())
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(await cardNames()).toEqual(['Mobile App'])
     expect(findProject(website.id)?.archived_at).toEqual(expect.stringMatching(/Z$/))

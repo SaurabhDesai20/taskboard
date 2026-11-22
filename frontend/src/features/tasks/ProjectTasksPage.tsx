@@ -1,7 +1,9 @@
-import { useCallback, useId, useMemo } from 'react'
+import { useCallback, useId, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import type { Project, UUID, Workspace } from '../../api/types'
-import { StatusMessage } from '../../components/StatusMessage'
+import { EmptyState } from '../../components/EmptyState'
+import { ErrorState } from '../../components/ErrorState'
+import { ListSkeleton } from '../../components/Skeleton'
 import { can } from '../../lib/permissions'
 import { useMembers } from '../members/hooks'
 import { useCurrentProject } from '../projects/hooks'
@@ -17,7 +19,7 @@ import {
   type TaskFilters,
 } from './filters'
 import { useProjectTasks } from './hooks'
-import { KanbanBoard } from './KanbanBoard'
+import { BoardSkeleton, KanbanBoard } from './KanbanBoard'
 import { TASK_STATUSES } from './labels'
 import { TaskDrawer } from './TaskDrawer'
 import { TaskFilterBar } from './TaskFilterBar'
@@ -41,6 +43,8 @@ const VIEWS: { view: BoardView; label: string }[] = [
 
 function ProjectTasks({ workspace, project }: { workspace: Workspace; project: Project }) {
   const headingId = useId()
+  // Where focus goes after the open task is deleted (its card, the drawer's opener, is gone).
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = useMemo(() => filtersFromSearchParams(searchParams), [searchParams])
   const view = viewFromSearchParams(searchParams)
@@ -64,29 +68,19 @@ function ProjectTasks({ workspace, project }: { workspace: Workspace; project: P
   const hrefFor = useCallback((taskId: UUID) => `?${withTask(searchParams, taskId).toString()}`, [searchParams])
   const closeDrawer = useCallback(() => setSearchParams((current) => withTask(current, null)), [setSearchParams])
 
+  const columns = filters.status.length > 0 ? filters.status : TASK_STATUSES
+
   let content
   if (tasks.isPending) {
-    content = <StatusMessage>Loading tasks...</StatusMessage>
+    content = view === 'list' ? <ListSkeleton label="Loading tasks..." rows={5} /> : <BoardSkeleton statuses={columns} />
   } else if (tasks.isError && !tasks.data) {
-    content = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void tasks.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load the tasks. {tasks.error.message}
-      </StatusMessage>
-    )
+    content = <ErrorState message="Could not load the tasks." error={tasks.error} onRetry={() => void tasks.refetch()} />
   } else if (view === 'list') {
     content =
       tasks.data.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-state__title">{filtered ? 'No tasks match the filters' : 'No tasks yet'}</p>
-          <p>{filtered ? 'Change or clear the filters to see more.' : 'Switch to the board to add tasks.'}</p>
-        </div>
+        <EmptyState title={filtered ? 'No tasks match the filters' : 'No tasks yet'}>
+          {filtered ? 'Change or clear the filters to see more.' : 'Switch to the board to add tasks.'}
+        </EmptyState>
       ) : (
         <TaskTable tasks={tasks.data} hrefFor={hrefFor} />
       )
@@ -95,7 +89,7 @@ function ProjectTasks({ workspace, project }: { workspace: Workspace; project: P
       <KanbanBoard
         project={project}
         tasks={tasks.data}
-        statuses={filters.status.length > 0 ? filters.status : TASK_STATUSES}
+        statuses={columns}
         canWrite={canWrite}
         filtered={filtered}
         hrefFor={hrefFor}
@@ -106,7 +100,9 @@ function ProjectTasks({ workspace, project }: { workspace: Workspace; project: P
   return (
     <section className="tasks-page" aria-labelledby={headingId} aria-busy={tasks.isFetching || undefined}>
       <div className="section-header">
-        <h2 id={headingId}>Tasks</h2>
+        <h2 id={headingId} ref={headingRef} tabIndex={-1}>
+          Tasks
+        </h2>
         <div className="view-toggle" role="group" aria-label="View">
           {VIEWS.map((option) => (
             <button
@@ -135,6 +131,7 @@ function ProjectTasks({ workspace, project }: { workspace: Workspace; project: P
           readOnlyReason={readOnlyReason}
           role={workspace.my_role}
           onClose={closeDrawer}
+          afterDeleteFocusRef={headingRef}
         />
       ) : null}
     </section>

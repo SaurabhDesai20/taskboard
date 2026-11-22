@@ -1,18 +1,18 @@
-import { useState } from 'react'
-import { Link, useLocation } from 'react-router'
+import { useId, useState } from 'react'
+import { Link } from 'react-router'
+import { EmptyState } from '../../components/EmptyState'
+import { ErrorState } from '../../components/ErrorState'
 import { RoleBadge } from '../../components/RoleBadge'
-import { StatusMessage } from '../../components/StatusMessage'
+import { CardGridSkeleton } from '../../components/Skeleton'
 import { CreateWorkspaceModal } from './CreateWorkspaceModal'
 import { useWorkspaces } from './hooks'
-import { noticeFrom } from './notice'
 import './workspaces.css'
 
-/** Home (`/`): the user's workspaces, or an empty state inviting them to create one. */
-export function WorkspacesPage() {
+/** The dashboard's list of my workspaces, or an empty state inviting me to create one. */
+export function WorkspacesSection() {
   const workspaces = useWorkspaces()
-  const location = useLocation()
-  const notice = noticeFrom(location.state)
   const [creating, setCreating] = useState(false)
+  const titleId = useId()
 
   const createButton = (
     <button type="button" className="button button--primary" onClick={() => setCreating(true)}>
@@ -22,30 +22,20 @@ export function WorkspacesPage() {
 
   let content
   if (workspaces.isPending) {
-    content = <StatusMessage>Loading your workspaces...</StatusMessage>
+    content = <CardGridSkeleton label="Loading your workspaces..." className="workspace-grid" count={2} />
   } else if (workspaces.isError) {
     content = (
-      <StatusMessage
-        tone="error"
-        action={
-          <button type="button" className="button" onClick={() => void workspaces.refetch()}>
-            Try again
-          </button>
-        }
-      >
-        Could not load your workspaces. {workspaces.error.message}
-      </StatusMessage>
+      <ErrorState
+        message="Could not load your workspaces."
+        error={workspaces.error}
+        onRetry={() => void workspaces.refetch()}
+      />
     )
   } else if (workspaces.data.length === 0) {
     content = (
-      <div className="empty-state">
-        <h2 className="empty-state__title">No workspaces yet</h2>
-        <p>
-          A workspace holds your team&apos;s projects and tasks. Create one, or ask a workspace admin
-          to add you.
-        </p>
-        {createButton}
-      </div>
+      <EmptyState title="No workspaces yet" headingLevel={3} action={createButton}>
+        A workspace holds your team&apos;s projects and tasks. Create one, or ask a workspace admin to add you.
+      </EmptyState>
     )
   } else {
     content = (
@@ -66,16 +56,11 @@ export function WorkspacesPage() {
   }
 
   return (
-    <section className="page" aria-labelledby="workspaces-title">
-      <div className="page-header">
-        <h1 id="workspaces-title">Your workspaces</h1>
+    <section className="dashboard__section" aria-labelledby={titleId}>
+      <div className="section-header">
+        <h2 id={titleId}>Your workspaces</h2>
         {workspaces.data && workspaces.data.length > 0 ? createButton : null}
       </div>
-      {notice ? (
-        <p className="notice" role="status">
-          {notice}
-        </p>
-      ) : null}
       {content}
       {creating ? <CreateWorkspaceModal onClose={() => setCreating(false)} /> : null}
     </section>

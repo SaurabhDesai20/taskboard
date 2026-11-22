@@ -14,5 +14,8 @@ afterEach(() => {
   cleanup()
   server.resetHandlers()
   resetMockState()
+  // UI preferences (theme, collapsed sidebar) must not leak from one test into the next.
+  window.localStorage.clear()
+  delete document.documentElement.dataset.theme
 })
 afterAll(() => server.close())

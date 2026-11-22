@@ -1,6 +1,7 @@
 """Shared fixtures: migrated test database, one rolled-back transaction per test, TestClient."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 from alembic import command
@@ -73,6 +74,23 @@ def app(db_session: Session) -> FastAPI:
     application = create_app()
     application.dependency_overrides[get_db] = lambda: db_session
     return application
+
+
+@pytest.fixture
+def app_with(db_session: Session) -> Callable[..., FastAPI]:
+    """Build an app whose settings differ from the test defaults, on the test's session:
+    `app_with(cookie_secure=True)`. Values are not validated, so pass them in their final type.
+    """
+    from app.api.deps import get_db
+    from app.core.config import get_settings
+    from app.main import create_app
+
+    def build(**overrides: Any) -> FastAPI:
+        application = create_app(get_settings().model_copy(update=overrides))
+        application.dependency_overrides[get_db] = lambda: db_session
+        return application
+
+    return build
 
 
 @pytest.fixture

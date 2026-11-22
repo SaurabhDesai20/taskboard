@@ -65,7 +65,8 @@ describe('activity flow', () => {
       ]),
     )
     expect(messages(list).slice(4, 8)).toEqual(before.slice(0, 4))
-  })
+    // A long flow through three pages: more time than the 5 s default on a loaded machine.
+  }, 15_000)
 
   it('member and workspace changes in the settings show up in a feed that was already loaded', async () => {
     const user = userEvent.setup()

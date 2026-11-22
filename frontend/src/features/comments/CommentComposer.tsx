@@ -56,6 +56,10 @@ export function CommentComposer({ task, author, access }: CommentComposerProps) 
     if (isSubmitShortcut(event)) {
       event.preventDefault()
       event.currentTarget.form?.requestSubmit()
+    } else if (event.key === 'Escape' && draft.trim() !== '') {
+      // A half-written comment is not thrown away by closing the drawer; Escape on an empty box
+      // still closes it.
+      event.stopPropagation()
     }
   }
 

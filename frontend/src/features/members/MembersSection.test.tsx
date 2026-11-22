@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { findMembership, MOCK_USERS, MOCK_WORKSPACES, setMockMembership, startMockSession } from '../../mocks/db'
 import { server } from '../../mocks/server'
 import { renderRoute } from '../../test/render'
+import { findToast } from '../../test/toasts'
 
 const { acme } = MOCK_WORKSPACES
 const { asha, ben, chen, dana, eve } = MOCK_USERS
@@ -264,10 +265,12 @@ describe('leave workspace', () => {
     const dialog = screen.getByRole('dialog', { name: 'Leave Acme?' })
     await user.click(within(dialog).getByRole('button', { name: 'Leave workspace' }))
 
-    expect(await screen.findByText('You left Acme.')).toBeInTheDocument()
+    expect(await findToast('You left Acme.')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
-    const main = screen.getByRole('main')
-    expect(within(main).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/w/globex'])
+    const workspaces = screen.getByRole('region', { name: 'Your workspaces' })
+    expect(within(workspaces).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/w/globex'])
+    // Focus did not drop to the page: the dialog's opener is gone, so the page heading has it.
+    expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toHaveFocus()
     expect(findMembership(acme.id, ben.id)).toBeUndefined()
   })
 

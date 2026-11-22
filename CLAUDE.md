@@ -17,7 +17,8 @@ Wherever PLAN.md says `make <target>`, run `.\scripts\<target>.ps1` from the rep
 | `make test` | `.\scripts\test.ps1` | pytest + vitest (backend tests need `db.ps1` running) |
 | (extra) | `.\scripts\lint.ps1` | ruff check, ruff format --check, mypy, eslint, tsc |
 | `make build` | `.\scripts\build.ps1` | Builds `frontend/dist` |
-| `make start` | `.\scripts\start.ps1` | Single uvicorn process on :8000 (serves `frontend/dist` from Phase 7) |
+| `make start` | `.\scripts\start.ps1` | Single uvicorn process on :8000 serving `/api` and the built `frontend/dist` (SPA fallback for deep links) |
+| (extra) | `.\scripts\seed.ps1` | Demo data (`python -m app.seed`) into DATABASE_URL; idempotent |
 | `make openapi` | `.\scripts\openapi.ps1` | Writes `docs/openapi.json` |
 
 Machine facts the config files will not tell you:
@@ -47,7 +48,7 @@ Machine facts the config files will not tell you:
    - Repositories contain queries only.
    - Routers never touch the session directly.
 2. **One transaction per request.** The service commits once at the end. The activity log row is written in the **same transaction** as the change it describes.
-3. **Permissions live in one place:** `api/deps.py::require_role(min_role)` plus `services/permissions.py` (a pure function `can(role, action) -> bool`). Every role check goes through `can()`.
+3. **Permissions live in one place:** `services/permissions.py` (a pure function `can(role, action) -> bool` over one data table of action ids) plus the gates in `api/deps.py` (`require_role(action)`, `require_project_role(action)`, `require_task_role(action)`; they take an **action id** such as `"member.manage"`, not a minimum role). Every role check goes through `can()`.
 4. **Tenant isolation:** every query for workspace-scoped data filters by `workspace_id`. Resolve project/task -> workspace first, then check membership. Return **404** (not 403) when the user is not a member, so existence isn't leaked.
 5. **Errors:** services raise the domain exceptions in `app/core/errors.py`: `NotFound`, `Forbidden`, `Conflict`, `ValidationFailed` (use `ValidationFailed.for_field(...)` for field errors), `Unauthorized`. The registered handlers turn them, and every framework error, into the contract's envelope.
 6. **Schemas:** separate `Create`, `Update` and `Read` Pydantic models. Responses use Read schemas only, never ORM models or password hashes.
@@ -118,6 +119,7 @@ Protocol:
   3. Review the generated file.
   4. Run the tests.
 - Starlette 1.x's TestClient needs `httpx2`, which is already a dev dependency.
+- Run test suites in the foreground under a time limit (e.g. `timeout 1500 uv run pytest -q`), and only one pytest session at a time: they share `taskboard_test`.
 
 ### Frontend
 
@@ -134,4 +136,4 @@ Protocol:
   | React Router | 7 | v8 requires React 19 |
   | TypeScript | ~6.0 | typescript-eslint does not support TS 7 yet |
 
-- **Browser mocking:** `VITE_API_MOCKING` in `frontend/.env.development` turns MSW on (`true`). Unhandled requests pass through the Vite proxy to the real backend. Set it to `false` at the Phase 1 Sync Point.
+- **Browser mocking:** `VITE_API_MOCKING` in `frontend/.env.development` is `false` since the Phase 1 Sync Point, so the dev UI talks to the real backend. Set it to `true` to run the browser on MSW mocks (unhandled requests still pass through the Vite proxy). Vitest always uses MSW.

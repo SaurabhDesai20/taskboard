@@ -138,4 +138,26 @@ describe('RegisterPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
   })
+
+  it.each([
+    ['120', 'Too many attempts. Please wait 2 minutes and try again.'],
+    [null, 'Too many attempts. Please wait a moment and try again.'],
+  ])('says how long to wait after too many attempts (Retry-After %s)', async (retryAfter, message) => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/auth/register', () =>
+        HttpResponse.json(
+          { error: { code: 'rate_limited', message: 'Too many attempts', details: {} } },
+          { status: 429, headers: retryAfter ? { 'Retry-After': retryAfter } : {} },
+        ),
+      ),
+    )
+    renderRoute({ route: '/register' })
+
+    await fillRegister(user, { name: 'Nia Patel', email: 'nia@example.com', password: 'correct-horse-battery' })
+    await submit(user)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(findUserByEmail('nia@example.com')).toBeUndefined()
+  })
 })
