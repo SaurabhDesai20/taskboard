@@ -84,7 +84,7 @@ describe('home: the workspace list', () => {
 })
 
 describe('workspace pages (/w/:slug)', () => {
-  it('shows the overview: name, my role, navigation and an empty Projects section', async () => {
+  it('shows the overview: name, my role, navigation and the Projects section', async () => {
     renderAs('asha', '/w/acme')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Acme' })).toBeInTheDocument()
@@ -93,16 +93,14 @@ describe('workspace pages (/w/:slug)', () => {
     expect(within(nav).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/w/acme/settings')
     const projects = screen.getByRole('region', { name: 'Projects' })
-    expect(within(projects).getByText('No projects yet')).toBeInTheDocument()
-    expect(within(projects).getByText('Projects you create in Acme will be listed here.')).toBeInTheDocument()
+    expect(await within(projects).findByRole('link', { name: 'Website' })).toBeInTheDocument()
   })
 
-  it('words the empty Projects section for roles that cannot create projects', async () => {
+  it('shows my role in the header for every role (here: viewer)', async () => {
     renderAs('chen', '/w/acme')
 
-    const projects = await screen.findByRole('region', { name: 'Projects' })
+    await screen.findByRole('region', { name: 'Projects' })
     expect(screen.getByText(/^Your role/)).toHaveTextContent('Your role: Viewer')
-    expect(within(projects).getByText('Projects that admins and owners create will be listed here.')).toBeInTheDocument()
   })
 
   it.each([

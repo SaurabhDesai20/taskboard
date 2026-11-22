@@ -9,9 +9,10 @@ Every workspace-scoped request starts here, in this order:
    The decision is `permissions.can(role, action)`.
 
 `api/deps.py::require_role(action)` runs steps 2 and 3 for `/workspaces/{wid}/...` routes.
-Phase 3+ resolves a project (or task -> project) to its workspace id first and then calls
-`workspace_access(...)` with `not_found_message="Project not found"` (or "Task not found"),
-so the 404/403 behaviour is identical everywhere.
+`api/deps.py::require_project_role(action)` runs `project_access(...)` for `/projects/{pid}/...`
+routes: it resolves the project to its workspace id first and then calls `workspace_access(...)`
+with `not_found_message="Project not found"`, so the 404/403 behaviour is identical everywhere.
+Phase 4 resolves a task -> project the same way ("Task not found").
 """
 
 from collections.abc import Mapping
@@ -23,11 +24,14 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.errors import Forbidden, NotFound
+from app.models.project import Project
 from app.models.workspace import Workspace
+from app.repositories import projects as projects_repo
 from app.repositories import workspaces as workspaces_repo
 from app.services.permissions import Action, Role, allowed_roles, can
 
 WORKSPACE_NOT_FOUND_MESSAGE = "Workspace not found"
+PROJECT_NOT_FOUND_MESSAGE = "Project not found"
 
 # Completes "Only <roles> can ..." in 403 messages.
 _ACTION_DESCRIPTIONS: Final[Mapping[Action, str]] = MappingProxyType(
@@ -73,6 +77,31 @@ def workspace_access(
     workspace, role = row
     authorize(role, action)
     return WorkspaceAccess(workspace=workspace, user_id=user_id, role=role)
+
+
+@dataclass(frozen=True)
+class ProjectAccess:
+    """Proof that `user_id` is a member of the project's workspace, with their role there."""
+
+    project: Project
+    user_id: UUID
+    role: Role
+
+
+def project_access(db: Session, project_id: UUID, user_id: UUID, action: Action) -> ProjectAccess:
+    """The caller's access to a project, if their role in its workspace allows `action`.
+
+    Raises NotFound "Project not found" (missing project, or not a member of its workspace) or
+    Forbidden (`insufficient_role`). A project of another workspace is indistinguishable from
+    a missing one.
+    """
+    project = projects_repo.get(db, project_id)
+    if project is None:
+        raise NotFound(PROJECT_NOT_FOUND_MESSAGE)
+    access = workspace_access(
+        db, project.workspace_id, user_id, action, not_found_message=PROJECT_NOT_FOUND_MESSAGE
+    )
+    return ProjectAccess(project=project, user_id=user_id, role=access.role)
 
 
 def authorize(role: Role, action: Action) -> None:

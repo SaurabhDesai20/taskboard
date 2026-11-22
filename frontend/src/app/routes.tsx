@@ -2,8 +2,10 @@ import type { RouteObject } from 'react-router'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RegisterPage } from '../features/auth/RegisterPage'
 import { RequireAuth, RequireGuest } from '../features/auth/RouteGuards'
+import { ProjectBoardPage } from '../features/projects/ProjectBoardPage'
+import { ProjectLayout } from '../features/projects/ProjectLayout'
 import { WorkspaceHomePage } from '../features/workspaces/WorkspaceHomePage'
-import { WorkspaceLayout } from '../features/workspaces/WorkspaceLayout'
+import { WorkspaceLayout, WorkspaceRoute } from '../features/workspaces/WorkspaceLayout'
 import { WorkspaceSettingsPage } from '../features/workspaces/WorkspaceSettingsPage'
 import { WorkspacesPage } from '../features/workspaces/WorkspacesPage'
 import { AppLayout } from './AppLayout'
@@ -31,10 +33,22 @@ export const routes: RouteObject[] = [
           {
             // The slug is resolved to a workspace (and the user's role) via GET /workspaces.
             path: 'w/:slug',
-            element: <WorkspaceLayout />,
+            element: <WorkspaceRoute />,
             children: [
-              { index: true, element: <WorkspaceHomePage /> },
-              { path: 'settings', element: <WorkspaceSettingsPage /> },
+              {
+                // Workspace header and tabs.
+                element: <WorkspaceLayout />,
+                children: [
+                  { index: true, element: <WorkspaceHomePage /> },
+                  { path: 'settings', element: <WorkspaceSettingsPage /> },
+                ],
+              },
+              {
+                // Breadcrumbs, project sidebar and the project. The id is the project's UUID.
+                path: 'projects/:projectId',
+                element: <ProjectLayout />,
+                children: [{ index: true, element: <ProjectBoardPage /> }],
+              },
             ],
           },
           { path: '*', element: <NotFoundPage /> },

@@ -6,10 +6,11 @@ import { useCurrentWorkspace } from './hooks'
 import './workspaces.css'
 
 /**
- * `/w/:slug/*`: resolves the slug through the workspace list, then shows the workspace header,
- * its navigation and the child page. Child pages can rely on `useCurrentWorkspace().workspace`.
+ * `/w/:slug/*`: resolves the slug through the workspace list, shows loading, error and
+ * not-found states, then the child route. Every page below it (the overview and settings in
+ * `WorkspaceLayout`, project pages) can rely on `useCurrentWorkspace().workspace`.
  */
-export function WorkspaceLayout() {
+export function WorkspaceRoute() {
   const { workspace, query } = useCurrentWorkspace()
 
   if (!workspace) {
@@ -40,6 +41,19 @@ export function WorkspaceLayout() {
     )
   }
 
+  // Keyed: switching workspaces on the same page starts its forms and dialogs over.
+  return (
+    <Fragment key={workspace.id}>
+      <Outlet />
+    </Fragment>
+  )
+}
+
+/** The workspace overview and settings pages: workspace header, my role and the tabs. */
+export function WorkspaceLayout() {
+  const { workspace } = useCurrentWorkspace()
+  if (!workspace) return null
+
   const base = `/w/${workspace.slug}`
   return (
     <div className="page workspace">
@@ -57,10 +71,7 @@ export function WorkspaceLayout() {
           Settings
         </NavLink>
       </nav>
-      {/* Keyed: switching workspaces on the same page starts its forms and dialogs over. */}
-      <Fragment key={workspace.id}>
-        <Outlet />
-      </Fragment>
+      <Outlet />
     </div>
   )
 }

@@ -1,7 +1,9 @@
-// A minimal form-state hook: controlled text inputs, validation on submit, focus on the first
-// invalid field. Server errors stay in the mutation (TanStack Query), not in this state.
+// A minimal form-state hook: controlled text inputs and textareas, validation on submit, focus on
+// the first invalid field. Server errors stay in the mutation (TanStack Query), not in this state.
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import type { FieldErrors } from './formErrors'
+
+type TextControl = HTMLInputElement | HTMLTextAreaElement
 
 interface FormHelpers {
   /** Back to the initial values, with no errors shown (e.g. after a successful submit). */
@@ -26,7 +28,7 @@ export function useForm<F extends string>({
   const [values, setValues] = useState(initialValues)
   // Errors appear only after the first submit, then follow the user's edits.
   const [submitted, setSubmitted] = useState(false)
-  const inputs = useRef<Partial<Record<F, HTMLInputElement | null>>>({})
+  const inputs = useRef<Partial<Record<F, TextControl | null>>>({})
   // The first initial values: callers often pass a new object literal on every render.
   const [resetValues] = useState(initialValues)
 
@@ -37,17 +39,19 @@ export function useForm<F extends string>({
     setSubmitted(false)
   }
 
+  /** Sets one field from code (e.g. a value derived from another field). */
+  function setValue(field: F, value: string) {
+    setValues((current) => ({ ...current, [field]: value }))
+  }
+
   function register(field: F) {
     return {
       name: field,
       value: values[field],
-      ref: (element: HTMLInputElement | null) => {
+      ref: (element: TextControl | null) => {
         inputs.current[field] = element
       },
-      onChange: (event: ChangeEvent<HTMLInputElement>) => {
-        const { value } = event.target
-        setValues((current) => ({ ...current, [field]: value }))
-      },
+      onChange: (event: ChangeEvent<TextControl>) => setValue(field, event.target.value),
     }
   }
 
@@ -63,5 +67,5 @@ export function useForm<F extends string>({
     onValidSubmit(values, { reset })
   }
 
-  return { values, errors, register, handleSubmit, reset }
+  return { values, errors, register, setValue, handleSubmit, reset }
 }

@@ -86,3 +86,34 @@ Run-wide decisions:
 **Open issues**
 - After removing a member, keyboard focus falls back to the page body.
 - The "You left / workspace deleted" notice lives in router state, so it reappears after a browser reload.
+
+## Phase 3: Projects
+
+**Built**
+- Backend:
+  - `projects` model and migration: unique `(workspace_id, key)`, cascade from workspaces.
+  - CRUD plus archive. Archive is a single conditional UPDATE, so a second archive gets 409 `already_archived`.
+  - `project_access()`, which resolves project → workspace and then reuses the workspace access check and `can()`.
+  - `require_project_role(action)` dependency.
+  - The key is immutable: a key sent to PATCH is ignored.
+- UI:
+  - Project grid on `/w/:slug` with a "Show archived" toggle (`?archived=1`) and loading, empty and error states.
+  - Create and edit modals (key suggested from the name; server errors shown on their fields) and an archive confirm dialog.
+  - Project layout at `/w/:slug/projects/:projectId` with breadcrumbs, a sidebar, an archived banner, and a not-found state.
+  - MSW handlers and seed projects.
+- Sync Point: `ProjectRead`, `ProjectCreate` and `ProjectUpdate` are aliases of the generated types.
+
+**Tested**
+- `lint.ps1` is clean.
+- `test.ps1`: 572 backend tests (including cross-workspace isolation tests that the agent confirmed catch deliberately introduced leaks) and 348 frontend tests pass.
+- Live smoke check through the Vite proxy: 56/56. It covers create by owner and admin, duplicate and invalid keys, the member 403, viewer list order, outsider 404s, admin edit, the viewer 403, archive and re-archive (409), the default and `include_archived` lists, the same key allowed in another workspace, and 404 for reading or editing another workspace's project.
+
+**Decisions**
+- Project URLs use the project UUID: `/w/:slug/projects/:projectId`.
+- Creating a project opens it.
+- Archived projects can still be edited by managers. There is no unarchive (contract updated).
+- The Sync Point's "verify each role's UI in the browser" was not done in a real browser, because no browser was available to the build. Role-based visibility is covered by component tests for all four roles, and the API side by the smoke check.
+
+**Open issues**
+- If the project request fails while the project is still in the cached project list, the page shows the cached copy.
+- When a modal closes after a demotion, keyboard focus can land on the page body.

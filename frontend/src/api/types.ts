@@ -116,3 +116,18 @@ export type MemberUpdate = Schemas['MemberUpdate']
 
 export type Workspace = WorkspaceRead
 export type Member = MemberRead
+
+// ---------------------------------------------------------------------------------------------
+// Projects (contract 3.5): generated
+// ---------------------------------------------------------------------------------------------
+
+/** Backend `ProjectRead`: the contract's `Project`. `archived_at` is null while active. */
+export type ProjectRead = Schemas['ProjectRead']
+
+/** Backend `ProjectCreate`: body of `POST /workspaces/{wid}/projects`. */
+export type ProjectCreate = Schemas['ProjectCreate']
+
+/** Backend `ProjectUpdate`: body of `PATCH /projects/{pid}`. The key cannot change; `null` clears the description. */
+export type ProjectUpdate = Schemas['ProjectUpdate']
+
+export type Project = ProjectRead

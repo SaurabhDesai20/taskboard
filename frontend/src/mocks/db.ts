@@ -10,7 +10,10 @@
 // | Ben Okafor | member | owner |
 // | Chen Wei | viewer | - |
 // | Eve Santos | - | - |
-import type { Role, User, UUID, Workspace } from '../api/types'
+//
+// Projects: Acme has Website (WEB), Mobile App (APP) and the archived Legacy CRM (CRM);
+// Globex has Operations (OPS).
+import type { Project, Role, User, UUID, Workspace } from '../api/types'
 import { ROLES } from '../lib/permissions'
 
 export interface MockUserRecord extends User {
@@ -87,20 +90,68 @@ function seedMembers(): MockMembershipRecord[] {
   ]
 }
 
+/** Stored exactly as the API returns it. */
+export type MockProjectRecord = Project
+
+export const MOCK_PROJECTS = {
+  website: {
+    id: '30000000-0000-4000-8000-000000000001',
+    workspace_id: MOCK_WORKSPACES.acme.id,
+    name: 'Website',
+    key: 'WEB',
+    description: 'Marketing site and signup flow',
+    archived_at: null,
+    created_by: MOCK_USERS.asha.id,
+    created_at: '2026-11-22T09:15:00Z',
+  },
+  mobile: {
+    id: '30000000-0000-4000-8000-000000000002',
+    workspace_id: MOCK_WORKSPACES.acme.id,
+    name: 'Mobile App',
+    key: 'APP',
+    description: null,
+    archived_at: null,
+    created_by: MOCK_USERS.dana.id,
+    created_at: '2026-11-22T09:18:00Z',
+  },
+  legacy: {
+    id: '30000000-0000-4000-8000-000000000003',
+    workspace_id: MOCK_WORKSPACES.acme.id,
+    name: 'Legacy CRM',
+    key: 'CRM',
+    description: 'The old customer database, kept for reference',
+    archived_at: '2026-11-22T09:40:00Z',
+    created_by: MOCK_USERS.asha.id,
+    created_at: '2026-11-22T09:16:00Z',
+  },
+  operations: {
+    id: '30000000-0000-4000-8000-000000000004',
+    workspace_id: MOCK_WORKSPACES.globex.id,
+    name: 'Operations',
+    key: 'OPS',
+    description: 'Internal tooling',
+    archived_at: null,
+    created_by: MOCK_USERS.ben.id,
+    created_at: '2026-11-22T09:20:00Z',
+  },
+} as const satisfies Record<string, MockProjectRecord>
+
 interface MockDb {
   users: MockUserRecord[]
   workspaces: MockWorkspaceRecord[]
   members: MockMembershipRecord[]
+  projects: MockProjectRecord[]
   /** Stands in for the httpOnly session cookie: the id of the signed-in user, or null. */
   sessionUserId: string | null
 }
 
-export const db: MockDb = { users: [], workspaces: [], members: [], sessionUserId: null }
+export const db: MockDb = { users: [], workspaces: [], members: [], projects: [], sessionUserId: null }
 
 export function resetMockDb(): void {
   db.users = Object.values(MOCK_USERS).map((user) => ({ ...user }))
   db.workspaces = Object.values(MOCK_WORKSPACES).map((workspace) => ({ ...workspace }))
   db.members = seedMembers()
+  db.projects = Object.values(MOCK_PROJECTS).map((project) => ({ ...project }))
   db.sessionUserId = null
 }
 
@@ -186,6 +237,7 @@ export function createWorkspace(fields: { name: string; slug: string }, ownerId:
 export function deleteWorkspace(id: UUID): void {
   db.workspaces = db.workspaces.filter((workspace) => workspace.id !== id)
   db.members = db.members.filter((member) => member.workspace_id !== id)
+  db.projects = db.projects.filter((project) => project.workspace_id !== id)
 }
 
 export function removeMembership(workspaceId: UUID, userId: UUID): void {
@@ -206,4 +258,35 @@ export function setMockMembership(workspaceId: UUID, userId: UUID, role: Role): 
 
 export function roleRank(role: Role): number {
   return ROLES.indexOf(role)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------------------------
+
+export function findProject(id: UUID): MockProjectRecord | undefined {
+  return db.projects.find((project) => project.id === id)
+}
+
+/** Every project of a workspace, archived ones included. */
+export function projectsOf(workspaceId: UUID): MockProjectRecord[] {
+  return db.projects.filter((project) => project.workspace_id === workspaceId)
+}
+
+export function createProject(
+  fields: { workspaceId: UUID; name: string; key: string; description: string | null },
+  creatorId: UUID,
+): MockProjectRecord {
+  const project: MockProjectRecord = {
+    id: crypto.randomUUID(),
+    workspace_id: fields.workspaceId,
+    name: fields.name,
+    key: fields.key,
+    description: fields.description,
+    archived_at: null,
+    created_by: creatorId,
+    created_at: new Date().toISOString(),
+  }
+  db.projects.push(project)
+  return project
 }

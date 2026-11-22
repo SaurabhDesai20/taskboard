@@ -14,7 +14,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.services import access as access_service
 from app.services import auth as auth_service
-from app.services.access import WorkspaceAccess
+from app.services.access import ProjectAccess, WorkspaceAccess
 from app.services.permissions import Action
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -42,6 +42,7 @@ def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 WorkspaceId = Annotated[UUID, Path(description="Workspace id")]
+ProjectId = Annotated[UUID, Path(description="Project id")]
 
 
 def require_role(action: Action) -> Callable[[UUID, Session, User], WorkspaceAccess]:
@@ -64,12 +65,30 @@ def require_role(action: Action) -> Callable[[UUID, Session, User], WorkspaceAcc
     return resolve_workspace_access
 
 
+def require_project_role(action: Action) -> Callable[[UUID, Session, User], ProjectAccess]:
+    """Dependency for `/projects/{pid}/...` routes: the caller's access to project `pid`.
+
+    `require_role` for a project: the service resolves the project to its workspace, then
+    applies the same membership and `permissions.can()` checks, before body validation:
+    - no cookie -> 401 `unauthorized`
+    - project missing, or caller not a member of its workspace -> 404 "Project not found"
+    - role below the action's minimum -> 403 `forbidden`, `details.reason = "insufficient_role"`
+    """
+
+    def resolve_project_access(pid: ProjectId, db: DbSession, user: CurrentUser) -> ProjectAccess:
+        return access_service.project_access(db, pid, user.id, action)
+
+    return resolve_project_access
+
+
 __all__ = [
     "AppSettings",
     "CurrentUser",
     "DbSession",
+    "ProjectAccess",
     "WorkspaceAccess",
     "get_current_user",
     "get_db",
+    "require_project_role",
     "require_role",
 ]

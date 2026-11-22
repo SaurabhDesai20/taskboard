@@ -189,3 +189,19 @@ export function validateStrings<F extends string>(
   }
   return { values, errors }
 }
+
+const TRUE_VALUES = new Set(['1', 'true', 'on', 'yes', 't', 'y'])
+const FALSE_VALUES = new Set(['0', 'false', 'off', 'no', 'f', 'n'])
+
+/**
+ * Reads an optional boolean query parameter the way FastAPI does (`true`/`false`, `1`/`0`,
+ * `yes`/`no`, ... in any case). Returns the value, or the 422 entry to report.
+ */
+export function readBooleanQuery(url: URL, name: string, fallback: boolean): boolean | FieldError {
+  const raw = url.searchParams.get(name)
+  if (raw === null) return fallback
+  const value = raw.toLowerCase()
+  if (TRUE_VALUES.has(value)) return true
+  if (FALSE_VALUES.has(value)) return false
+  return { field: name, location: 'query', message: 'Input should be a valid boolean, unable to interpret input' }
+}

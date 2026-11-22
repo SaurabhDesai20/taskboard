@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import ACCESS_TOKEN_COOKIE, create_access_token, hash_password
+from app.models.project import Project
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.services.permissions import Role
@@ -82,6 +83,31 @@ def add_member(db: Session, workspace: Workspace, user: User, role: Role) -> Wor
     db.add(member)
     db.flush()
     return member
+
+
+def create_project(
+    db: Session,
+    workspace: Workspace,
+    *,
+    name: str | None = None,
+    key: str | None = None,
+    description: str | None = None,
+    created_by: User | None = None,
+    archived_at: datetime | None = None,
+) -> Project:
+    """A project in `workspace`, created by `created_by` (default: the workspace's creator)."""
+    n = next(_sequence)
+    project = Project(
+        workspace_id=workspace.id,
+        name=name or f"Project {n}",
+        key=key or f"P{n}",
+        description=description,
+        created_by=created_by.id if created_by else workspace.created_by,
+        archived_at=archived_at,
+    )
+    db.add(project)
+    db.flush()
+    return project
 
 
 @dataclass(frozen=True)

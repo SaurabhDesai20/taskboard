@@ -107,6 +107,59 @@ def test_workspace_and_member_shapes_match_the_contract(openapi: dict[str, Any])
     assert "required" not in schemas["MemberUpdate"]
 
 
+def test_project_schema_names(openapi: dict[str, Any]) -> None:
+    paths = openapi["paths"]
+    collection = paths["/api/workspaces/{wid}/projects"]
+    item = paths["/api/projects/{pid}"]
+    archive = paths["/api/projects/{pid}/archive"]["post"]
+
+    assert _array_item_ref(collection["get"]["responses"]["200"]) == "ProjectRead"
+    assert _ref(collection["post"]["requestBody"]) == "ProjectCreate"
+    assert _ref(collection["post"]["responses"]["201"]) == "ProjectRead"
+    assert _ref(item["get"]["responses"]["200"]) == "ProjectRead"
+    assert _ref(item["patch"]["requestBody"]) == "ProjectUpdate"
+    assert _ref(item["patch"]["responses"]["200"]) == "ProjectRead"
+    assert _ref(archive["responses"]["200"]) == "ProjectRead"
+    assert "requestBody" not in archive
+    for operation in (item["get"], item["patch"], archive):
+        assert [(p["name"], p["in"]) for p in operation["parameters"]] == [("pid", "path")]
+    include_archived = collection["get"]["parameters"][1]
+    assert (include_archived["name"], include_archived["in"]) == ("include_archived", "query")
+    assert include_archived["required"] is False
+    assert include_archived["schema"]["type"] == "boolean"
+    assert include_archived["schema"]["default"] is False
+
+
+def test_project_shapes_match_the_contract(openapi: dict[str, Any]) -> None:
+    schemas = openapi["components"]["schemas"]
+    read = schemas["ProjectRead"]
+    fields = {
+        "id",
+        "workspace_id",
+        "name",
+        "key",
+        "description",
+        "archived_at",
+        "created_by",
+        "created_at",
+    }
+
+    assert set(read["properties"]) == fields
+    assert set(read["required"]) == fields
+    for nullable in ("description", "archived_at"):
+        assert {"type": "null"} in read["properties"][nullable]["anyOf"]
+    assert set(schemas["ProjectCreate"]["properties"]) == {"name", "key", "description"}
+    assert set(schemas["ProjectCreate"]["required"]) == {"name", "key"}
+    assert schemas["ProjectCreate"]["properties"]["key"]["pattern"] == "^[A-Z][A-Z0-9]{1,9}$"
+    # The key is immutable, so it is not part of the PATCH body.
+    update = schemas["ProjectUpdate"]
+    assert set(update["properties"]) == {"name", "description"}
+    assert "required" not in update
+    # PATCH fields are optional; only description can be cleared with null (contract 1.7).
+    assert update["properties"]["name"]["type"] == "string"
+    assert {"type": "null"} in update["properties"]["description"]["anyOf"]
+
+
 def test_role_enum_is_a_named_schema(openapi: dict[str, Any]) -> None:
     role = openapi["components"]["schemas"]["Role"]
 

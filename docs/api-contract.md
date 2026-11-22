@@ -319,13 +319,16 @@ The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` w
 | add-member body | `MemberCreate` | `POST /workspaces/{wid}/members` | 2 |
 | change-role body | `MemberUpdate` | `PATCH /workspaces/{wid}/members/{uid}` | 2 |
 | `Role` | `Role` (string enum) | `WorkspaceRead.my_role`, `MemberRead.role`, `MemberCreate.role`, `MemberUpdate.role` | 2 |
+| `Project` | `ProjectRead` | `200` of `GET /workspaces/{wid}/projects` (array), `GET`/`PATCH /projects/{pid}`, `POST /projects/{pid}/archive`; `201` of `POST /workspaces/{wid}/projects` | 3 |
+| create-project body | `ProjectCreate` | `POST /workspaces/{wid}/projects` | 3 |
+| update-project body | `ProjectUpdate` | `PATCH /projects/{pid}` | 3 |
 | `ErrorEnvelope` | `ErrorEnvelope` (its `error` is `ErrorBody`) | every documented error response, `422` included | 0 |
 | health response | `HealthRead` | `GET /health` | 0 |
 | session cookie | security scheme `CookieAuth` (`apiKey`, in `cookie`, name `access_token`) | every endpoint that requires the cookie | 1 |
 
 - Error responses (including `422`) are documented with `ErrorEnvelope`. FastAPI's default `HTTPValidationError` schema is not used, because the API never returns that shape.
-- Path parameters keep the names used in this document: `wid` (workspace id) and `uid` (a member's user id).
-- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role` are `string`/`Role`, never `null`).
+- Path parameters keep the names used in this document: `wid` (workspace id), `uid` (a member's user id) and `pid` (project id).
+- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role`, `ProjectUpdate.name` are `string`/`Role`, never `null`; `ProjectUpdate.description` is `string | null`).
 - Later phases add rows here as they implement endpoints, following the same pattern: `<Entity>Read` for response objects, `<Entity>Create` / `<Entity>Update` for request bodies, and `<Action>Request` for action bodies.
 
 ---
@@ -559,11 +562,16 @@ Errors:
 
 ---
 
-### 3.5 Projects (Phase 3)
+### 3.5 Projects (Phase 3, implemented)
+
+- `/workspaces/{wid}/projects` follows the `404` and malformed-id rules of 3.3 (message `"Workspace not found"`).
+- Every `/projects/{pid}` endpoint returns `404 not_found` with message `"Project not found"` when the project does not exist or the caller is not a member of its workspace, and `422` (`field: "pid", location: "path"`) for a malformed id. A project of another workspace gets exactly the same `404` as an id that does not exist.
+- Roles always come from the project's own workspace.
+- A `403` (member or viewer on a write) has message `"Only owners and admins can create, edit or archive projects"`.
 
 #### `GET /workspaces/{wid}/projects` (viewer)
 
-Query: `include_archived` (boolean, default `false`). Ordered by `name`. `200`:
+Query: `include_archived` (boolean, default `false`; `true` adds archived projects to the same list). Ordered by `name` (case-insensitive), then `key`. `[]` when there are none. An invalid `include_archived` is a `422` (`field: "include_archived", location: "query"`). `200`:
 
 ```json
 [
@@ -582,31 +590,36 @@ Query: `include_archived` (boolean, default `false`). Ordered by `name`. `200`:
 
 #### `POST /workspaces/{wid}/projects` (admin)
 
-Request (`description` optional):
+Request (`description` optional: omitted or `null` for none; a blank one is stored as `""`). Field rules are in 1.8. The key is not uppercased for you: `"web"` is a `422`. `created_by` is the caller and `archived_at` is `null`. Request:
 
 ```json
 { "name": "Website", "key": "WEB", "description": "Marketing site and signup flow" }
 ```
 
-`201`: the new `Project`. Errors: `409 project_key_taken`, `403`, `404`, `422`.
+`201`: the new `Project`.
+
+Errors, in the order they are checked:
+- `404` (workspace), then `403 insufficient_role` (member or viewer).
+- `422` for an invalid body.
+- `409` with `details.reason = "project_key_taken"`, message `"This project key is already used in this workspace"`. Archived projects keep their key. The same key may be used in another workspace.
 
 #### `GET /projects/{pid}` (viewer)
 
-`200`: a `Project`. Errors: `404`.
+`200`: a `Project`, archived or not. Errors: `404`.
 
 #### `PATCH /projects/{pid}` (admin)
 
-`name` and `description` can change; `key` is immutable. Request:
+`name` and `description` can change. `key` is immutable: a `key` in the body is ignored, like any other unknown field. Partial per 1.7: `{}` returns the project unchanged, `"name": null` is a `422`, `"description": null` clears the description. Archived projects can still be edited. Request:
 
 ```json
 { "name": "Website v2", "description": null }
 ```
 
-`200`: the updated `Project`. Errors: `403`, `404`, `422`.
+`200`: the updated `Project`. Errors: `404`, then `403`, then `422`.
 
 #### `POST /projects/{pid}/archive` (admin)
 
-No body. `200`: the `Project` with `archived_at` set:
+No body (one sent is ignored). There is no unarchive. `200`: the `Project` with `archived_at` set to the server's current time:
 
 ```json
 {
@@ -621,7 +634,7 @@ No body. `200`: the `Project` with `archived_at` set:
 }
 ```
 
-Errors: `409 already_archived`, `403`, `404`.
+Errors: `404`, then `403`, then `409` with `details.reason = "already_archived"`, message `"This project is already archived"` (the original `archived_at` is kept).
 
 ---
 
