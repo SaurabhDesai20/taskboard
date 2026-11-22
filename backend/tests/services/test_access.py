@@ -6,9 +6,15 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.errors import Forbidden, NotFound
-from app.services.access import denied_message, project_access, task_access, workspace_access
+from app.services.access import (
+    comment_access,
+    denied_message,
+    project_access,
+    task_access,
+    workspace_access,
+)
 from app.services.permissions import ACTIONS, Action, Role, can
-from tests.factories import create_project, create_task, create_team
+from tests.factories import create_comment, create_project, create_task, create_team
 
 
 @pytest.mark.parametrize("role", list(Role))
@@ -134,9 +140,58 @@ def test_task_access_hides_missing_and_foreign_tasks(db_session: Session) -> Non
         assert exc_info.value.details == {}
 
 
+@pytest.mark.parametrize("role", list(Role))
+@pytest.mark.parametrize("action", ACTIONS)
+def test_comment_access_applies_the_role_in_the_comments_workspace(
+    db_session: Session, role: Role, action: Action
+) -> None:
+    team = create_team(db_session)
+    project = create_project(db_session, team.workspace)
+    task = create_task(db_session, project)
+    comment = create_comment(db_session, task, team.other_member)
+    user = team.users[role]
+
+    if can(role, action):
+        access = comment_access(db_session, comment.id, user.id, action)
+        assert access.comment is comment
+        assert access.task is task
+        assert access.project is project
+        assert access.user_id == user.id
+        assert access.role is role
+    else:
+        with pytest.raises(Forbidden) as exc_info:
+            comment_access(db_session, comment.id, user.id, action)
+        assert exc_info.value.details == {"reason": "insufficient_role"}
+
+
+def test_comment_access_hides_missing_and_foreign_comments(db_session: Session) -> None:
+    team = create_team(db_session)
+    other = create_team(db_session)
+    foreign_task = create_task(db_session, create_project(db_session, other.workspace))
+    foreign = create_comment(db_session, foreign_task, other.owner)
+    own_task = create_task(db_session, create_project(db_session, team.workspace))
+    own = create_comment(db_session, own_task, team.owner)
+
+    for comment_id, user_id in [
+        (uuid.uuid4(), team.owner.id),
+        (foreign.id, team.owner.id),
+        (own.id, team.outsider.id),
+    ]:
+        with pytest.raises(NotFound) as exc_info:
+            comment_access(db_session, comment_id, user_id, "workspace.view")
+        assert exc_info.value.message == "Comment not found"
+        assert exc_info.value.details == {}
+
+
 @pytest.mark.parametrize(
     ("action", "message"),
     [
+        ("comment.create", "Only owners, admins and members can comment"),
+        (
+            "comment.edit_own",
+            "Only owners, admins and members can edit or delete their comments",
+        ),
+        ("comment.delete_any", "Only owners and admins can delete other people's comments"),
         ("task.write", "Only owners, admins and members can create or edit tasks"),
         ("task.delete", "Only owners and admins can delete tasks"),
         ("member.manage", "Only owners and admins can add, remove or change members"),

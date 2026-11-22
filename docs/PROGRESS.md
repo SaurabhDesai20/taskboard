@@ -169,3 +169,48 @@ Run-wide decisions:
 - On a filtered board, "top of column" means the top of the visible tasks.
 - The drawer doesn't pick up edits made elsewhere while it is open (Phase 8).
 - After deleting a task from the drawer, keyboard focus falls to the page body.
+
+## Phase 5: Comments
+
+**Built**
+- Backend:
+  - `comments` model and migration, indexed on `(task_id, created_at, id)`.
+  - List, create, edit and delete, with keyset cursor pagination (base64url of `created_at` and `id`; an invalid cursor or limit returns 422).
+  - Author-or-admin rules: edit is author-only; delete is the author or owner/admin; viewers get 403 `insufficient_role`.
+  - Archived projects make comments read-only, but deleting is allowed.
+  - `comment_count` is real on every task response. A correlated subquery computes it, and a test shows the number of SQL statements does not grow with the number of tasks.
+  - Posting a comment locks the task, so it can't be deleted mid-request.
+- UI:
+  - Comment thread in the task drawer, built on `useInfiniteQuery` with "Load more".
+  - Relative timestamps in `<time>`, and an "(edited)" marker.
+  - A composer that is disabled for viewers and archived projects, with the reason shown.
+  - Optimistic add with rollback on error.
+  - Inline edit and delete per role.
+  - A comment count on cards and in the list view that updates after posting or deleting.
+  - MSW comment handlers.
+- Sync Point:
+  - `CommentRead`, `CommentCreate`, `CommentUpdate` and `CommentPage` are aliases of the generated types.
+  - The comment mock was re-aligned to the final contract 3.7: PATCH check order, an unchanged body does not set `edited_at`, and the exact 403 messages.
+
+**Tested**
+- `lint.ps1` is clean.
+- `test.ps1`: 1078 backend tests and 567 frontend tests pass.
+- Live smoke check through the Vite proxy: 111/111. It covers:
+  - member comment, viewer 403, empty-body 422;
+  - `comment_count` on the task, the board list and `/me/tasks`;
+  - 25 comments paginated as 20 + 5 with no duplicates and a null last cursor;
+  - limit and cursor 422s;
+  - author edit, the owner's `not_author` 403, the viewer and member delete 403s, admin delete, author delete;
+  - the count after deletes, outsider 404s, and the archived-project 409s with delete still allowed.
+
+**Decisions**
+- Check order on PATCH: 404, then 403 role, then 422, then 403 `not_author`, then 409.
+- `UserRef` moved to `schemas/user.py`.
+- The backend's Phase 4 concurrency test helper had a race; it was fixed.
+- The Testing Library async timeout was raised to 3 s, because the full suite flaked under CPU load while the backend tests ran in parallel.
+- No new libraries.
+
+**Open issues**
+- If more pages exist and the thread refetches, a just-posted comment drops out of view until "Load more".
+- Escape in the composer closes the drawer and loses the draft.
+- My Tasks does not show comment counts.

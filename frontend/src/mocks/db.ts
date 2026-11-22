@@ -30,7 +30,26 @@
 // | CRM-1 Export customer data | To Do | Low | Asha | today - 10 (archived project) |
 // | OPS-1 Rotate API keys | To Do | Urgent | Asha | today - 1 (overdue) |
 // | OPS-2 Update runbook | In Review | Low | Ben | - |
-import type { DateOnly, Project, Role, Task, TaskPriority, TaskStatus, User, UUID, Workspace } from '../api/types'
+//
+// Comments (times relative to the reset, so they read "3 hours ago"). Tasks' `comment_count` is
+// always counted from these:
+//
+// | Task | Comments, oldest first |
+// |---|---|
+// | WEB-1 | Ben (3 hours ago), Asha (2 hours ago, edited, two lines) |
+// | WEB-5 | Dana (2 days ago), Ben (yesterday), Asha (30 minutes ago) |
+import type {
+  CommentRead,
+  DateOnly,
+  Project,
+  Role,
+  Task,
+  TaskPriority,
+  TaskStatus,
+  User,
+  UUID,
+  Workspace,
+} from '../api/types'
 import { addDays, todayDateOnly } from '../lib/dates'
 import { ROLES } from '../lib/permissions'
 
@@ -167,7 +186,6 @@ export interface MockTaskRecord {
   position: number
   assignee_id: UUID | null
   due_date: DateOnly | null
-  comment_count: number
   created_by: UUID
   created_at: string
   updated_at: string
@@ -203,7 +221,6 @@ interface SeedTask {
   assignee?: MockUserRecord
   /** Days from today; no due date when left out. */
   dueInDays?: number
-  commentCount?: number
   createdAt: string
 }
 
@@ -224,7 +241,6 @@ function seedTasks(): MockTaskRecord[] {
       position: 1024,
       assignee: ben,
       dueInDays: 9,
-      commentCount: 2,
       createdAt: '2026-11-22T09:20:00Z',
     },
     {
@@ -369,11 +385,70 @@ function seedTasks(): MockTaskRecord[] {
     position: seed.position,
     assignee_id: seed.assignee?.id ?? null,
     due_date: seed.dueInDays === undefined ? null : addDays(today, seed.dueInDays),
-    comment_count: seed.commentCount ?? 0,
     created_by: seed.project.created_by,
     created_at: seed.createdAt,
     updated_at: seed.createdAt,
   }))
+}
+
+/** A comment as stored: the author by id (the API embeds `{ id, name }`). */
+export interface MockCommentRecord {
+  id: UUID
+  task_id: UUID
+  workspace_id: UUID
+  author_id: UUID
+  body: string
+  created_at: string
+  edited_at: string | null
+}
+
+const commentId = (n: number) => `50000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+
+/** Ids of the seeded comments (see the table at the top). */
+export const MOCK_COMMENT_IDS = {
+  web1Ben: commentId(1),
+  web1Asha: commentId(2),
+  web5Dana: commentId(3),
+  web5Ben: commentId(4),
+  web5Asha: commentId(5),
+} as const
+
+const MINUTE_MS = 60_000
+
+function seedComments(now: number): MockCommentRecord[] {
+  const { asha, ben, dana } = MOCK_USERS
+  const ids = MOCK_COMMENT_IDS
+  const minutesAgo = (minutes: number) => new Date(now - minutes * MINUTE_MS).toISOString()
+  const comment = (
+    id: UUID,
+    taskId: UUID,
+    author: MockUserRecord,
+    body: string,
+    createdMinutesAgo: number,
+    editedMinutesAgo?: number,
+  ): MockCommentRecord => ({
+    id,
+    task_id: taskId,
+    workspace_id: MOCK_WORKSPACES.acme.id,
+    author_id: author.id,
+    body,
+    created_at: minutesAgo(createdMinutesAgo),
+    edited_at: editedMinutesAgo === undefined ? null : minutesAgo(editedMinutesAgo),
+  })
+  return [
+    comment(ids.web1Ben, MOCK_TASK_IDS.web1, ben, 'Reproduced on Chrome and Firefox.', 180),
+    comment(
+      ids.web1Asha,
+      MOCK_TASK_IDS.web1,
+      asha,
+      'Thanks! Can you check Safari too?\nIt may be the same cookie issue.',
+      120,
+      60,
+    ),
+    comment(ids.web5Dana, MOCK_TASK_IDS.web5, dana, 'The password rules only show up after the first error.', 2 * 24 * 60),
+    comment(ids.web5Ben, MOCK_TASK_IDS.web5, ben, 'Agreed. I will move the hint above the field.', 24 * 60 + 30),
+    comment(ids.web5Asha, MOCK_TASK_IDS.web5, asha, 'Looks good to me once the hint moves.', 30),
+  ]
 }
 
 interface MockDb {
@@ -382,6 +457,9 @@ interface MockDb {
   members: MockMembershipRecord[]
   projects: MockProjectRecord[]
   tasks: MockTaskRecord[]
+  comments: MockCommentRecord[]
+  /** The last comment time handed out (ms), so a new comment always sorts after older ones. */
+  lastCommentAt: number
   /** The last task number used per project id (numbers are never reused). */
   taskNumbers: Record<UUID, number>
   /** Stands in for the httpOnly session cookie: the id of the signed-in user, or null. */
@@ -394,6 +472,8 @@ export const db: MockDb = {
   members: [],
   projects: [],
   tasks: [],
+  comments: [],
+  lastCommentAt: 0,
   taskNumbers: {},
   sessionUserId: null,
 }
@@ -404,6 +484,8 @@ export function resetMockDb(): void {
   db.members = seedMembers()
   db.projects = Object.values(MOCK_PROJECTS).map((project) => ({ ...project }))
   db.tasks = seedTasks()
+  db.comments = seedComments(Date.now())
+  db.lastCommentAt = 0
   db.taskNumbers = {}
   for (const task of db.tasks) {
     db.taskNumbers[task.project_id] = Math.max(db.taskNumbers[task.project_id] ?? 0, task.number)
@@ -495,6 +577,7 @@ export function deleteWorkspace(id: UUID): void {
   db.members = db.members.filter((member) => member.workspace_id !== id)
   db.projects = db.projects.filter((project) => project.workspace_id !== id)
   db.tasks = db.tasks.filter((task) => task.workspace_id !== id)
+  db.comments = db.comments.filter((comment) => comment.workspace_id !== id)
 }
 
 export function removeMembership(workspaceId: UUID, userId: UUID): void {
@@ -570,23 +653,27 @@ export function toTask(record: MockTaskRecord): Task {
     ...fields,
     key: `${projectKey}-${record.number}`,
     assignee: assignee ? { id: assignee.id, name: assignee.name } : null,
+    // Counted, never stored, so it always matches the mock comments.
+    comment_count: db.comments.filter((comment) => comment.task_id === record.id).length,
   }
 }
 
-type NewTaskFields = Omit<MockTaskRecord, 'id' | 'number' | 'comment_count' | 'created_at' | 'updated_at'>
+type NewTaskFields = Omit<MockTaskRecord, 'id' | 'number' | 'created_at' | 'updated_at'>
 
 /** Adds a task with the project's next number (numbers are never reused, even after deletes). */
 export function createTask(fields: NewTaskFields): MockTaskRecord {
   const number = (db.taskNumbers[fields.project_id] ?? 0) + 1
   db.taskNumbers[fields.project_id] = number
   const now = new Date().toISOString()
-  const task: MockTaskRecord = { ...fields, id: crypto.randomUUID(), number, comment_count: 0, created_at: now, updated_at: now }
+  const task: MockTaskRecord = { ...fields, id: crypto.randomUUID(), number, created_at: now, updated_at: now }
   db.tasks.push(task)
   return task
 }
 
+/** Deletes the task and its comments (contract 3.6). */
 export function deleteTask(id: UUID): void {
   db.tasks = db.tasks.filter((task) => task.id !== id)
+  db.comments = db.comments.filter((comment) => comment.task_id !== id)
 }
 
 /** Test helper: the task keys of each column of a project, in position order. */
@@ -596,4 +683,72 @@ export function columnKeys(projectId: UUID): Record<TaskStatus, string[]> {
     columns[task.status].push(toTask(task).key)
   }
   return columns
+}
+
+// ---------------------------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------------------------
+
+export function findComment(id: UUID): MockCommentRecord | undefined {
+  return db.comments.find((comment) => comment.id === id)
+}
+
+/** Server order (contract 3.7): oldest first, then by id. */
+export function compareComments(a: MockCommentRecord, b: MockCommentRecord): number {
+  if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1
+  if (a.id === b.id) return 0
+  return a.id < b.id ? -1 : 1
+}
+
+/** A task's comments, oldest first. */
+export function commentsOf(taskId: UUID): MockCommentRecord[] {
+  return db.comments.filter((comment) => comment.task_id === taskId).sort(compareComments)
+}
+
+export function toComment(record: MockCommentRecord): CommentRead {
+  const author = db.users.find((user) => user.id === record.author_id)
+  return {
+    id: record.id,
+    task_id: record.task_id,
+    author: { id: record.author_id, name: author?.name ?? 'Unknown user' },
+    body: record.body,
+    created_at: record.created_at,
+    edited_at: record.edited_at,
+  }
+}
+
+/** Now, but always after the previous one, so comments made in one millisecond keep their order. */
+export function nextCommentTimestamp(): string {
+  db.lastCommentAt = Math.max(Date.now(), db.lastCommentAt + 1)
+  return new Date(db.lastCommentAt).toISOString()
+}
+
+/**
+ * Adds a comment to a task. `POST /tasks/{tid}/comments` uses it; tests use it to set up a thread
+ * (`createdAt` defaults to now).
+ */
+export function createComment(fields: {
+  taskId: UUID
+  authorId: UUID
+  body: string
+  createdAt?: string
+  editedAt?: string | null
+}): MockCommentRecord {
+  const task = findTask(fields.taskId)
+  if (!task) throw new Error(`No mock task ${fields.taskId}`)
+  const comment: MockCommentRecord = {
+    id: crypto.randomUUID(),
+    task_id: task.id,
+    workspace_id: task.workspace_id,
+    author_id: fields.authorId,
+    body: fields.body,
+    created_at: fields.createdAt ?? nextCommentTimestamp(),
+    edited_at: fields.editedAt ?? null,
+  }
+  db.comments.push(comment)
+  return comment
+}
+
+export function deleteComment(id: UUID): void {
+  db.comments = db.comments.filter((comment) => comment.id !== id)
 }

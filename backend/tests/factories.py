@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import ACCESS_TOKEN_COOKIE, create_access_token, hash_password
+from app.models.comment import Comment
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
@@ -154,6 +155,31 @@ def create_task(
     db.add(task)
     db.flush()
     return task
+
+
+def create_comment(
+    db: Session,
+    task: Task,
+    author: User,
+    *,
+    body: str | None = None,
+    created_at: datetime | None = None,
+    edited_at: datetime | None = None,
+) -> Comment:
+    """A comment by `author` on `task`. `created_at` overrides the database clock, which is
+    frozen for the whole test transaction (so comments made in one test share a timestamp)."""
+    comment = Comment(
+        task_id=task.id,
+        workspace_id=task.workspace_id,
+        author_id=author.id,
+        body=body or f"Comment {next(_sequence)}",
+        edited_at=edited_at,
+    )
+    if created_at is not None:
+        comment.created_at = created_at
+    db.add(comment)
+    db.flush()
+    return comment
 
 
 @dataclass(frozen=True)

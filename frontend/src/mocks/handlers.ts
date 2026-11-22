@@ -3,6 +3,7 @@
 // One file per feature in ./handlers/; in-memory data in ./db.ts.
 import { resetMockDb } from './db'
 import { authHandlers } from './handlers/auth'
+import { commentHandlers } from './handlers/comments'
 import { healthHandlers } from './handlers/health'
 import { memberHandlers } from './handlers/members'
 import { projectHandlers } from './handlers/projects'
@@ -19,6 +20,7 @@ export const handlers = [
   ...memberHandlers,
   ...projectHandlers,
   ...taskHandlers,
+  ...commentHandlers,
 ]
 
 /** Back to the seeded data and no session. Tests call it after each test (src/test/setup.ts). */

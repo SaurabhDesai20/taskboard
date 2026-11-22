@@ -99,7 +99,7 @@ Every non-2xx response uses this envelope:
 | 403 | `insufficient_role` | Role is below the action's minimum role |
 | 403 | `own_role` | Users cannot change their own role |
 | 403 | `protected_member` | Admins cannot change or remove owners or other admins, or grant admin/owner |
-| 403 | `not_author` | Only the comment's author may do this |
+| 403 | `not_author` | Only the comment's author may do this (edit); only the author, owners and admins (delete) |
 | 409 | `email_taken` | Email already registered |
 | 409 | `slug_taken` | Workspace slug already used |
 | 409 | `project_key_taken` | Project key already used in this workspace |
@@ -136,11 +136,12 @@ Every non-2xx response uses this envelope:
 - Response:
 
 ```json
-{ "items": [], "next_cursor": "eyJjIjoiMjAyNi0xMS0yMlQwOTozMDowMFoiLCJpZCI6IjUwMDAwMDAwIn0" }
+{ "items": [], "next_cursor": "eyJjIjoiMjAyNi0xMS0yMlQxMDowMDowMFoiLCJpZCI6IjUwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9" }
 ```
 
-- `next_cursor` is `null` on the last page. Clients pass it back unchanged as `cursor` and never parse it.
-- An invalid cursor returns `422` with `field: "cursor", location: "query"`.
+- `next_cursor` is `null` on the last page, including a last page that is exactly `limit` items long. Clients pass it back unchanged as `cursor` and never parse it.
+- Pages are keyset-based: items are ordered by `created_at`, then `id` (so items with equal timestamps still have a stable order), and the cursor marks the position of the previous page's last item. A cursor stays valid when items are added or deleted while paging: nothing is skipped or repeated, and items created after the walk started appear on later pages.
+- An invalid `limit` (not an integer, below 1, above 100) or an invalid cursor (anything the server did not issue, including `""`) returns `422` with `location: "query"` and `field: "limit"` or `field: "cursor"`.
 - Every other list endpoint returns a plain JSON array.
 
 ### 1.7 PATCH semantics
@@ -304,7 +305,7 @@ interface ErrorEnvelope {
 - `Task.position` is a float that orders tasks within a status column (ascending). See `POST /tasks/{tid}/move`.
 - `Task.number` is a per-project sequence starting at 1. It is never reused, even after deletes, and a rejected create does not use one up. Concurrent creates in one project always get different numbers.
 - `Task.key` is the project key, a hyphen and the number (e.g. `"WEB-12"`). Project keys are immutable, so a task's key never changes.
-- `Task.comment_count` counts the task's current comments. It is always `0` until Phase 5 adds comments.
+- `Task.comment_count` counts the task's current comments (deleted ones no longer count). It is on every task response: the project task list, `GET`/`PATCH /tasks/{tid}`, `POST /tasks/{tid}/move`, `GET /me/tasks`, and `0` on a newly created task. After posting or deleting a comment, refetch the task (or the list) to see the new count.
 - `Task.updated_at` changes whenever the task's row changes, including when a rebalance renumbers its `position` (see `POST /tasks/{tid}/move`). A request that changes nothing leaves it alone.
 - `Workspace.my_role` is the calling user's role in that workspace. It is included on every workspace response.
 
@@ -332,18 +333,23 @@ The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` w
 | update-task body | `TaskUpdate` | `PATCH /tasks/{tid}` | 4 |
 | move-task body | `TaskMoveRequest` | `POST /tasks/{tid}/move` | 4 |
 | `MyTask` | `MyTaskRead` | `200` of `GET /me/tasks` (array) | 4 |
-| `UserRef` | `UserRef` | `TaskRead.assignee` (later also comment authors and activity actors) | 4 |
+| `UserRef` | `UserRef` | `TaskRead.assignee`, `CommentRead.author` (later also activity actors) | 4 |
 | `ProjectRef` | `ProjectRef` | `MyTaskRead.project` | 4 |
 | `WorkspaceRef` | `WorkspaceRef` | `MyTaskRead.workspace` | 4 |
 | `TaskStatus` | `TaskStatus` (string enum) | `TaskRead.status`, `TaskCreate.status`, `TaskUpdate.status`, `TaskMoveRequest.status`, the `status` query filter | 4 |
 | `TaskPriority` | `TaskPriority` (string enum) | `TaskRead.priority`, `TaskCreate.priority`, `TaskUpdate.priority`, the `priority` query filter | 4 |
+| `Comment` | `CommentRead` | `CommentPage.items`, `200` of `PATCH /comments/{cid}`; `201` of `POST /tasks/{tid}/comments` | 5 |
+| `Page<Comment>` | `CommentPage` | `200` of `GET /tasks/{tid}/comments` | 5 |
+| create-comment body | `CommentCreate` | `POST /tasks/{tid}/comments` | 5 |
+| update-comment body | `CommentUpdate` | `PATCH /comments/{cid}` | 5 |
 | `ErrorEnvelope` | `ErrorEnvelope` (its `error` is `ErrorBody`) | every documented error response, `422` included | 0 |
 | health response | `HealthRead` | `GET /health` | 0 |
 | session cookie | security scheme `CookieAuth` (`apiKey`, in `cookie`, name `access_token`) | every endpoint that requires the cookie | 1 |
 
 - Error responses (including `422`) are documented with `ErrorEnvelope`. FastAPI's default `HTTPValidationError` schema is not used, because the API never returns that shape.
-- Path parameters keep the names used in this document: `wid` (workspace id), `uid` (a member's user id), `pid` (project id) and `tid` (task id).
-- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role`, `ProjectUpdate.name`, `TaskUpdate.title`, `TaskUpdate.status` and `TaskUpdate.priority` are `string`/enum, never `null`; `ProjectUpdate.description`, `TaskUpdate.description`, `TaskUpdate.assignee_id` and `TaskUpdate.due_date` are nullable).
+- Path parameters keep the names used in this document: `wid` (workspace id), `uid` (a member's user id), `pid` (project id), `tid` (task id) and `cid` (comment id).
+- Paginated responses are concrete named schemas (`CommentPage`, later the activity page), never generic names like `Page_CommentRead_`.
+- PATCH body fields are optional but not nullable in the schema unless section 1.7 says the field can be cleared (`WorkspaceUpdate.name`, `MemberUpdate.role`, `ProjectUpdate.name`, `TaskUpdate.title`, `TaskUpdate.status`, `TaskUpdate.priority` and `CommentUpdate.body` are `string`/enum, never `null`; `ProjectUpdate.description`, `TaskUpdate.description`, `TaskUpdate.assignee_id` and `TaskUpdate.due_date` are nullable).
 - Later phases add rows here as they implement endpoints, following the same pattern: `<Entity>Read` for response objects, `<Entity>Create` / `<Entity>Update` for request bodies, and `<Action>Request` for action bodies.
 
 ---
@@ -653,7 +659,7 @@ Errors: `404`, then `403`, then `409` with `details.reason = "already_archived"`
 
 ---
 
-### 3.6 Tasks (Phase 4, implemented; `comment_count` is real from Phase 5)
+### 3.6 Tasks (Phase 4, implemented; real `comment_count` since Phase 5)
 
 - `/projects/{pid}/tasks` follows the `404` and malformed-id rules of 3.5 (message `"Project not found"`, `field: "pid"`).
 - Every `/tasks/{tid}` endpoint returns `404 not_found` with message `"Task not found"` when the task does not exist or the caller is not a member of its workspace, and `422` (`field: "tid", location: "path"`) for a malformed id. A task of another workspace gets exactly the same `404` as an id that does not exist.
@@ -838,11 +844,27 @@ Errors: `401`, `422`.
 
 ---
 
-### 3.7 Comments (Phase 5)
+### 3.7 Comments (Phase 5, implemented)
+
+- `/tasks/{tid}/comments` follows the `404` and malformed-id rules of 3.6 (message `"Task not found"`, `field: "tid"`).
+- Every `/comments/{cid}` endpoint returns `404 not_found` with message `"Comment not found"` when the comment does not exist (also after it or its task was deleted) or the caller is not a member of its workspace (comment → task → project → workspace), and `422` (`field: "cid", location: "path"`) for a malformed id. A comment of another workspace gets exactly the same `404` as an id that does not exist.
+- Roles always come from the comment's (task's) own workspace.
+- `body` is trimmed (section 1.8), then 1 to 5000 characters; line breaks and inner whitespace are kept. Unknown and server-controlled fields in a body (`id`, `task_id`, `author`, `author_id`, `created_at`, `edited_at`, ...) are ignored.
+- Archived projects: creating and editing return `409` with `details.reason = "project_archived"` and message `"This project is archived, so its comments are read-only"`. Listing and deleting still work.
+- Comments are deleted with their task (`DELETE /tasks/{tid}`) and their workspace. A comment whose author left the workspace stays, under the author's name; the author can no longer reach it (`404`).
+
+`403` responses:
+
+| When | `details.reason` | `message` |
+|---|---|---|
+| A viewer posts a comment | `insufficient_role` | `"Only owners, admins and members can comment"` |
+| A viewer edits or deletes any comment, even one they wrote before being demoted | `insufficient_role` | `"Only owners, admins and members can edit or delete their comments"` |
+| Anyone but the author edits a comment (admins and owners included) | `not_author` | `"Only the author can edit this comment"` |
+| A member deletes someone else's comment | `not_author` | `"Only owners and admins can delete other people's comments"` |
 
 #### `GET /tasks/{tid}/comments` (viewer)
 
-Paginated (section 1.6), **oldest first**. `200`:
+Paginated (section 1.6), **oldest first**: by `created_at`, then `id`. Query: `limit` (1 to 100, default 20) and `cursor`. A task without comments returns `{ "items": [], "next_cursor": null }`. Works in archived projects. `200`:
 
 ```json
 {
@@ -860,33 +882,62 @@ Paginated (section 1.6), **oldest first**. `200`:
 }
 ```
 
-Errors: `404`, `422`.
+To load the whole thread, follow `next_cursor` until it is `null`; a comment posted meanwhile appears on the last page.
+
+Errors: `404`, `422` (`location: "query"`, `field: "limit"` or `"cursor"`; section 1.6).
 
 #### `POST /tasks/{tid}/comments` (member)
 
-Request:
+The author is the caller. `edited_at` is `null`. Request:
 
 ```json
 { "body": "Reproduced on Chrome and Firefox." }
 ```
 
-`201`: the new `Comment`. Errors: `409 project_archived`, `403`, `404`, `422`.
+`201`: the new `Comment` (same shape as the list items).
+
+Errors, in the order they are checked:
+- `404`, then `403 insufficient_role` (viewer).
+- `422` for an invalid body.
+- `409 project_archived`.
 
 #### `PATCH /comments/{cid}` (author only, who must still be member or above)
 
-Request:
+Only `body` can change. Partial per 1.7: `{}`, or the current body (after trimming), returns the comment unchanged, `edited_at` included; `"body": null` is a `422`. Request:
 
 ```json
 { "body": "Reproduced on Chrome, Firefox and Safari." }
 ```
 
-`200`: the `Comment` with `edited_at` set. Errors: `403 not_author`, `403`, `409 project_archived`, `404`, `422`.
+`200`: the `Comment` with the new `body` and `edited_at` set to the server's current time (`created_at` never changes):
+
+```json
+{
+  "id": "50000000-0000-4000-8000-000000000001",
+  "task_id": "40000000-0000-4000-8000-000000000001",
+  "author": { "id": "10000000-0000-4000-8000-000000000002", "name": "Ben Okafor" },
+  "body": "Reproduced on Chrome, Firefox and Safari.",
+  "created_at": "2026-11-22T10:00:00Z",
+  "edited_at": "2026-11-22T10:12:00Z"
+}
+```
 
 Editing is author-only. Admins may delete any comment but not edit other people's comments (role matrix, PLAN.md section 4).
 
+Errors, in the order they are checked:
+- `404`, then `403 insufficient_role` (viewer, also for their own comment).
+- `422` for an invalid body.
+- `403 not_author` (the caller did not write the comment).
+- `409 project_archived` (for any body, even `{}`).
+
 #### `DELETE /comments/{cid}` (author with member role or above, or admin/owner)
 
-`204`. Errors: `403 not_author`, `404`.
+`204`. Allowed in archived projects. The task's `comment_count` drops by one.
+
+Errors, in the order they are checked:
+- `404` (also for a comment that is already deleted).
+- `403 insufficient_role` (viewer, also for their own comment).
+- `403 not_author` (a member deleting someone else's comment).
 
 ---
 

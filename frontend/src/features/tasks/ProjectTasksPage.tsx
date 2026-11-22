@@ -133,6 +133,7 @@ function ProjectTasks({ workspace, project }: { workspace: Workspace; project: P
           canWrite={canWrite}
           canDelete={canDelete}
           readOnlyReason={readOnlyReason}
+          role={workspace.my_role}
           onClose={closeDrawer}
         />
       ) : null}

@@ -232,7 +232,10 @@ describe('read-only details', () => {
     expect(within(dialog).getByText('Status').nextElementSibling).toHaveTextContent('In Progress')
     expect(within(dialog).getByText('Assignee').nextElementSibling).toHaveTextContent('Ben Okafor')
     expect(within(dialog).getByText('After login users land on /404 instead of the dashboard.')).toBeInTheDocument()
-    expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('textbox', { name: 'Title' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('textbox', { name: 'Description' })).not.toBeInTheDocument()
+    // The only text box is the comment composer, disabled for viewers (see CommentsSection.test.tsx).
+    expect(within(dialog).getByRole('textbox')).toBeDisabled()
     expect(within(dialog).queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Delete task' })).not.toBeInTheDocument()
   })

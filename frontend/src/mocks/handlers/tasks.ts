@@ -68,14 +68,14 @@ const fieldError = (field: string, message: string, location: Location = 'body')
 // Access
 // ---------------------------------------------------------------------------------------------
 
-interface TaskAccess {
+export interface TaskAccess {
   task: MockTaskRecord
   project: MockProjectRecord
   membership: MockMembershipRecord
 }
 
 /** Resolve task -> project -> workspace, then 404 when it does not exist or I am not a member. */
-function requireTaskMember(tid: string | readonly string[] | undefined): TaskAccess | Response {
+export function requireTaskMember(tid: string | readonly string[] | undefined): TaskAccess | Response {
   const invalid = invalidUuidParams({ tid })
   if (invalid) return invalid
   const user = requireUser()

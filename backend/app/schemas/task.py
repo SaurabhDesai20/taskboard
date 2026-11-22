@@ -10,6 +10,7 @@ from pydantic_core import PydanticCustomError
 
 from app.models.task import TaskPriority, TaskStatus
 from app.schemas.common import NotNull, UtcDatetime
+from app.schemas.user import UserRef
 
 TaskTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 # May be empty after trimming: "" is kept as "", and null means "no description".
@@ -41,13 +42,6 @@ AssigneeFilter = Annotated[
     ),
 ]
 """`assignee_id` in the task list query: a user id, or `none` for unassigned tasks."""
-
-
-class UserRef(BaseModel):
-    """A user's id and display name, nested in other objects (e.g. a task's assignee)."""
-
-    id: UUID
-    name: str
 
 
 class ProjectRef(BaseModel):

@@ -237,6 +237,12 @@
   font-size: 0.8125rem;
 }
 
+.task-card__end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
 /* Priority badge */
 
 .priority-badge {
@@ -424,6 +430,13 @@
 
 .task-table__none {
   color: var(--color-text-muted);
+}
+
+/* The comment count column: numbers line up on the right. */
+.task-table .task-table__number,
+.task-table th:last-child {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* Task detail drawer */

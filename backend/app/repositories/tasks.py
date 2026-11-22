@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import ColumnElement, and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.comment import Comment
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User
@@ -16,6 +17,15 @@ _STATUS_ORDER = case({status: rank for rank, status in enumerate(TaskStatus)}, v
 _COLUMN_ORDER = (Task.position, Task.number)
 
 _LIKE_ESCAPE = "\\"
+
+# The task's current number of comments, as a column of the task queries below: one
+# correlated count per row (an index range scan on comments), never one query per task.
+_COMMENT_COUNT = (
+    select(func.count())
+    .where(Comment.workspace_id == Task.workspace_id, Comment.task_id == Task.id)
+    .correlate(Task)
+    .scalar_subquery()
+)
 
 
 def get_with_project(db: Session, task_id: UUID) -> tuple[Task, Project] | None:
@@ -34,28 +44,43 @@ def reload(db: Session, task: Task) -> bool:
     return db.scalars(stmt).one_or_none() is not None
 
 
+def lock_against_delete(db: Session, task: Task) -> bool:
+    """Key-share-lock the task's row until the transaction ends, so it cannot be deleted
+    before then. False if it has been deleted already.
+
+    Comment writes take it before inserting a comment that references the task. It does not
+    block task updates or moves.
+    """
+    stmt = (
+        select(Task.id)
+        .where(Task.workspace_id == task.workspace_id, Task.id == task.id)
+        .with_for_update(read=True, key_share=True)
+    )
+    return db.scalars(stmt).one_or_none() is not None
+
+
 def list_for_project(
     db: Session, project: Project, filters: TaskFilters
-) -> list[tuple[Task, User | None]]:
-    """The project's matching tasks with their assignees, in board order: by status
-    (todo, in_progress, in_review, done), then position."""
+) -> list[tuple[Task, User | None, int]]:
+    """The project's matching tasks with their assignees and comment counts, in board order:
+    by status (todo, in_progress, in_review, done), then position."""
     stmt = (
-        select(Task, User)
+        select(Task, User, _COMMENT_COUNT)
         .outerjoin(User, User.id == Task.assignee_id)
         .where(Task.workspace_id == project.workspace_id, Task.project_id == project.id)
         .where(*_conditions(filters))
         .order_by(_STATUS_ORDER, *_COLUMN_ORDER)
     )
-    return [(task, assignee) for task, assignee in db.execute(stmt)]
+    return [(task, assignee, comment_count) for task, assignee, comment_count in db.execute(stmt)]
 
 
 def list_assigned_to(
     db: Session, user_id: UUID, filters: TaskFilters
-) -> list[tuple[Task, Project, Workspace]]:
+) -> list[tuple[Task, Project, Workspace, int]]:
     """Tasks assigned to the user in workspaces they are a member of, outside archived
-    projects, by due date (none last), then creation time."""
+    projects, with their comment counts, by due date (none last), then creation time."""
     stmt = (
-        select(Task, Project, Workspace)
+        select(Task, Project, Workspace, _COMMENT_COUNT)
         .join(Project, Project.id == Task.project_id)
         .join(Workspace, Workspace.id == Task.workspace_id)
         # Scope by membership: a task the user is still assigned to in a workspace they have
@@ -70,7 +95,9 @@ def list_assigned_to(
         .where(Task.assignee_id == user_id, Project.archived_at.is_(None), *_conditions(filters))
         .order_by(Task.due_date.asc().nulls_last(), Task.created_at, Task.id)
     )
-    return [(task, project, workspace) for task, project, workspace in db.execute(stmt)]
+    return [
+        (task, project, workspace, count) for task, project, workspace, count in db.execute(stmt)
+    ]
 
 
 def list_column(

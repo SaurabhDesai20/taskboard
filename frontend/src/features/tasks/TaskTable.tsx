@@ -28,6 +28,7 @@ export function TaskTable({ tasks, hrefFor }: TaskTableProps) {
             <th scope="col">Priority</th>
             <th scope="col">Assignee</th>
             <th scope="col">Due</th>
+            <th scope="col">Comments</th>
           </tr>
         </thead>
         <tbody>
@@ -51,6 +52,7 @@ export function TaskTable({ tasks, hrefFor }: TaskTableProps) {
                   <span className="task-table__none">None</span>
                 )}
               </td>
+              <td className="task-table__number">{task.comment_count}</td>
             </tr>
           ))}
         </tbody>

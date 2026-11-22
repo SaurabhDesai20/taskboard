@@ -14,3 +14,11 @@ class UserRead(BaseModel):
     email: str
     name: str
     created_at: UtcDatetime
+
+
+class UserRef(BaseModel):
+    """A user's id and display name, nested in other objects (a task's assignee, a comment's
+    author)."""
+
+    id: UUID
+    name: str

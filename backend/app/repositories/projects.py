@@ -68,6 +68,23 @@ def lock_for_task_write(db: Session, project: Project) -> None:
     db.execute(stmt).scalar_one()
 
 
+def lock_for_comment_write(db: Session, project: Project) -> None:
+    """Share-lock the project's row until the transaction ends, and reload `project` from it.
+
+    Comment writes that are not allowed on an archived project (create, edit) take this lock
+    first, so `archived_at` is current: the write waits for a concurrent archive and then sees
+    it, and an archive waits for the comment write to commit. `FOR SHARE` lets comment writes
+    run side by side; they only wait for task writes (`lock_for_task_write`) and archives.
+    """
+    stmt = (
+        select(Project)
+        .where(Project.id == project.id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    db.execute(stmt).scalar_one()
+
+
 def take_task_number(db: Session, project: Project) -> int:
     """The project's next task number, reserved for the caller. Needs `lock_for_task_write`.
 

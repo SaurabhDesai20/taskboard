@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Task, TaskMoveRequest } from '../../api/types'
+import { CommentCount } from '../comments/CommentCount'
 import { DueDate } from './DueDate'
 import { isOverdue } from './dueDates'
 import type { MoveOption } from './ordering'
@@ -19,7 +20,7 @@ interface TaskCardBodyProps {
   moveMenu?: ReactNode
 }
 
-/** What a card shows: key, priority, title (opens the drawer), due date and assignee. */
+/** What a card shows: key, priority, title (opens the drawer), due date, comment count and assignee. */
 function TaskCardBody({ task, today, href, moveMenu }: TaskCardBodyProps) {
   const titleId = useId()
   const overdue = isOverdue(task, today)
@@ -40,7 +41,10 @@ function TaskCardBody({ task, today, href, moveMenu }: TaskCardBodyProps) {
       </h4>
       <div className="task-card__meta">
         {task.due_date ? <DueDate date={task.due_date} overdue={overdue} /> : <span />}
-        <TaskAssignee assignee={task.assignee} />
+        <span className="task-card__end">
+          <CommentCount count={task.comment_count} />
+          <TaskAssignee assignee={task.assignee} />
+        </span>
       </div>
       {moveMenu}
     </article>

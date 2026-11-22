@@ -167,6 +167,7 @@ describe('list view', () => {
       'Priority',
       'Assignee',
       'Due',
+      'Comments',
     ])
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows.map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual([
@@ -180,6 +181,8 @@ describe('list view', () => {
     expect(within(pricing).getByText('To Do')).toBeInTheDocument()
     expect(within(pricing).getByText('Asha Rao')).toBeInTheDocument()
     expect(within(pricing).getByText('Overdue')).toBeInTheDocument()
+    expect(within(pricing).getAllByRole('cell').at(-1)).toHaveTextContent('0')
+    expect(within(rows[3]).getAllByRole('cell').at(-1)).toHaveTextContent('2')
     expect(screen.queryByRole('region', { name: 'To Do' })).not.toBeInTheDocument()
   })
 

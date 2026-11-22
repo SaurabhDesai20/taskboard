@@ -174,3 +174,22 @@ export type MyTaskRead = Schemas['MyTaskRead']
 
 export type Task = TaskRead
 export type MyTask = MyTaskRead
+
+// ---------------------------------------------------------------------------------------------
+// Comments (contract 3.7): generated
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Backend `CommentRead`: the contract's `Comment`. `body` is plain text (shown as text, never as
+ * HTML); `edited_at` is null until the author edits it.
+ */
+export type CommentRead = Schemas['CommentRead']
+
+/** Backend `CommentCreate`: body of `POST /tasks/{tid}/comments` (1 to 5000 chars, trimmed). */
+export type CommentCreate = Schemas['CommentCreate']
+
+/** Backend `CommentUpdate`: body of `PATCH /comments/{cid}` (author only). Partial per contract 1.7. */
+export type CommentUpdate = Schemas['CommentUpdate']
+
+/** Backend `CommentPage`: one page of `GET /tasks/{tid}/comments`, oldest first (contract 1.6). */
+export type CommentPage = Schemas['CommentPage']

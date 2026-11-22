@@ -4,6 +4,8 @@ import {
   ACTIONS,
   can,
   canChangeRole,
+  canDeleteComment,
+  canEditComment,
   canLeaveWorkspace,
   canRemoveMember,
   countOwners,
@@ -127,5 +129,24 @@ describe('leaving', () => {
         { user_id: 'c', role: 'owner' },
       ]),
     ).toBe(2)
+  })
+})
+
+describe('comments', () => {
+  const AUTHOR = 'author-id'
+  const OTHER = 'other-id'
+
+  it.each([
+    // role, edit own, delete own, edit other's, delete other's
+    ['owner', true, true, false, true],
+    ['admin', true, true, false, true],
+    ['member', true, true, false, false],
+    ['viewer', false, false, false, false],
+  ] as const)('%s: edit own %s, delete own %s, edit others %s, delete others %s', (role, editOwn, deleteOwn, editOther, deleteOther) => {
+    const actor = { userId: AUTHOR, role }
+    expect(canEditComment(actor, AUTHOR)).toBe(editOwn)
+    expect(canDeleteComment(actor, AUTHOR)).toBe(deleteOwn)
+    expect(canEditComment(actor, OTHER)).toBe(editOther)
+    expect(canDeleteComment(actor, OTHER)).toBe(deleteOther)
   })
 })

@@ -28,6 +28,7 @@ from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.models.project import Project
 from app.models.task import Task, TaskStatus
 from app.models.user import User
+from app.repositories import comments as comments_repo
 from app.repositories import members as members_repo
 from app.repositories import projects as projects_repo
 from app.repositories import tasks as tasks_repo
@@ -40,9 +41,9 @@ from app.schemas.task import (
     TaskMoveRequest,
     TaskRead,
     TaskUpdate,
-    UserRef,
     WorkspaceRef,
 )
+from app.schemas.user import UserRef
 from app.services.access import TASK_NOT_FOUND_MESSAGE, ProjectAccess, TaskAccess
 
 POSITION_STEP = 1024.0
@@ -55,14 +56,11 @@ ASSIGNEE_NOT_MEMBER_MESSAGE = "Assignee must be a member of this workspace"
 INVALID_NEIGHBOUR_MESSAGE = "Must be another task of this project with the target status"
 NEIGHBOURS_OUT_OF_ORDER_MESSAGE = "Must come after after_task_id in the target column"
 
-# Phase 5 (comments) replaces this with the task's real comment count.
-_NO_COMMENTS = 0
-
 
 def list_tasks(db: Session, access: ProjectAccess, filters: TaskFilters) -> list[TaskRead]:
     """The project's matching tasks in board order. Gate: `workspace.view`."""
     rows = tasks_repo.list_for_project(db, access.project, filters)
-    return [_read(task, access.project, assignee) for task, assignee in rows]
+    return [_read(task, access.project, assignee, count) for task, assignee, count in rows]
 
 
 def create(db: Session, access: ProjectAccess, data: TaskCreate) -> TaskRead:
@@ -87,12 +85,13 @@ def create(db: Session, access: ProjectAccess, data: TaskCreate) -> TaskRead:
         created_by=access.user_id,
     )
     db.commit()
-    return _read(task, project, assignee)
+    # A new task has no comments yet.
+    return _read(task, project, assignee, 0)
 
 
 def get(db: Session, access: TaskAccess) -> TaskRead:
     """Gate: `workspace.view`."""
-    return _read(access.task, access.project, _assignee_of(db, access.task))
+    return _read_current(db, access.task, access.project)
 
 
 def update(db: Session, access: TaskAccess, data: TaskUpdate) -> TaskRead:
@@ -133,7 +132,7 @@ def update(db: Session, access: TaskAccess, data: TaskUpdate) -> TaskRead:
         changed = True
     if changed:
         db.commit()
-    return _read(task, project, _assignee_of(db, task))
+    return _read_current(db, task, project)
 
 
 def delete(db: Session, access: TaskAccess) -> None:
@@ -162,7 +161,7 @@ def move(db: Session, access: TaskAccess, data: TaskMoveRequest) -> TaskRead:
     task.status = data.status
     _place(task, column, index)
     db.commit()
-    return _read(task, project, _assignee_of(db, task))
+    return _read_current(db, task, project)
 
 
 def list_my_tasks(db: Session, user: User, filters: TaskFilters) -> list[MyTaskRead]:
@@ -170,11 +169,11 @@ def list_my_tasks(db: Session, user: User, filters: TaskFilters) -> list[MyTaskR
     rows = tasks_repo.list_assigned_to(db, user.id, filters)
     return [
         MyTaskRead(
-            **_task_fields(task, project, user),
+            **_task_fields(task, project, user, comment_count),
             project=ProjectRef(id=project.id, name=project.name, key=project.key),
             workspace=WorkspaceRef(id=workspace.id, name=workspace.name, slug=workspace.slug),
         )
-        for task, project, workspace in rows
+        for task, project, workspace, comment_count in rows
     ]
 
 
@@ -281,7 +280,9 @@ def _rebalance(ordered: list[Task]) -> None:
             task.position = position
 
 
-def _task_fields(task: Task, project: Project, assignee: User | None) -> dict[str, Any]:
+def _task_fields(
+    task: Task, project: Project, assignee: User | None, comment_count: int
+) -> dict[str, Any]:
     return {
         "id": task.id,
         "project_id": task.project_id,
@@ -295,12 +296,17 @@ def _task_fields(task: Task, project: Project, assignee: User | None) -> dict[st
         "position": task.position,
         "assignee": None if assignee is None else UserRef(id=assignee.id, name=assignee.name),
         "due_date": task.due_date,
-        "comment_count": _NO_COMMENTS,
+        "comment_count": comment_count,
         "created_by": task.created_by,
         "created_at": task.created_at,
         "updated_at": task.updated_at,
     }
 
 
-def _read(task: Task, project: Project, assignee: User | None) -> TaskRead:
-    return TaskRead(**_task_fields(task, project, assignee))
+def _read(task: Task, project: Project, assignee: User | None, comment_count: int) -> TaskRead:
+    return TaskRead(**_task_fields(task, project, assignee, comment_count))
+
+
+def _read_current(db: Session, task: Task, project: Project) -> TaskRead:
+    """The task with its assignee and current comment count read from the database."""
+    return _read(task, project, _assignee_of(db, task), comments_repo.count_for_task(db, task))

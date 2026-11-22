@@ -4,9 +4,10 @@ Import every model module here so Alembic autogenerate sees all tables.
 """
 
 from app.db.base import Base
+from app.models.comment import Comment
 from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 
-__all__ = ["Base", "Project", "Task", "User", "Workspace", "WorkspaceMember"]
+__all__ = ["Base", "Comment", "Project", "Task", "User", "Workspace", "WorkspaceMember"]

@@ -281,6 +281,72 @@ def test_task_shapes_match_the_contract(openapi: dict[str, Any]) -> None:
     assert move["required"] == ["status"]
 
 
+def test_comment_schema_names(openapi: dict[str, Any]) -> None:
+    paths = openapi["paths"]
+    collection = paths["/api/tasks/{tid}/comments"]
+    item = paths["/api/comments/{cid}"]
+
+    assert _ref(collection["get"]["responses"]["200"]) == "CommentPage"
+    assert _ref(collection["post"]["requestBody"]) == "CommentCreate"
+    assert _ref(collection["post"]["responses"]["201"]) == "CommentRead"
+    assert _ref(item["patch"]["requestBody"]) == "CommentUpdate"
+    assert _ref(item["patch"]["responses"]["200"]) == "CommentRead"
+    assert "content" not in item["delete"]["responses"]["204"]
+    assert [(p["name"], p["in"]) for p in collection["post"]["parameters"]] == [("tid", "path")]
+    for operation in (item["patch"], item["delete"]):
+        assert [(p["name"], p["in"]) for p in operation["parameters"]] == [("cid", "path")]
+        assert operation["security"] == [{"CookieAuth": []}]
+    for status in ("403", "404", "409", "422"):
+        assert _ref(item["patch"]["responses"][status]) == "ErrorEnvelope"
+    # A plain named schema, not a generic Page[...] name.
+    assert not any("[" in name for name in openapi["components"]["schemas"])
+
+
+def test_comment_list_pagination_parameters(openapi: dict[str, Any]) -> None:
+    parameters = openapi["paths"]["/api/tasks/{tid}/comments"]["get"]["parameters"]
+    query = {p["name"]: p for p in parameters if p["in"] == "query"}
+
+    assert list(query) == ["limit", "cursor"]
+    assert all(p["required"] is False for p in query.values())
+    limit = query["limit"]["schema"]
+    assert (limit["type"], limit["minimum"], limit["maximum"], limit["default"]) == (
+        "integer",
+        1,
+        100,
+        20,
+    )
+    assert query["cursor"]["schema"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
+
+def test_comment_shapes_match_the_contract(openapi: dict[str, Any]) -> None:
+    schemas = openapi["components"]["schemas"]
+    read_fields = {
+        "CommentRead": {"id", "task_id", "author", "body", "created_at", "edited_at"},
+        "CommentPage": {"items", "next_cursor"},
+    }
+    for name, fields in read_fields.items():
+        assert set(schemas[name]["properties"]) == fields, name
+        assert set(schemas[name]["required"]) == fields, name
+
+    read = schemas["CommentRead"]["properties"]
+    assert read["author"] == {"$ref": "#/components/schemas/UserRef"}
+    assert {"type": "null"} in read["edited_at"]["anyOf"]
+    page = schemas["CommentPage"]["properties"]
+    assert page["items"]["items"] == {"$ref": "#/components/schemas/CommentRead"}
+    assert page["next_cursor"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
+    create = schemas["CommentCreate"]
+    assert set(create["properties"]) == {"body"}
+    assert create["required"] == ["body"]
+    body = create["properties"]["body"]
+    assert (body["type"], body["minLength"], body["maxLength"]) == ("string", 1, 5000)
+    # PATCH: the body is optional but not nullable (contract 1.7).
+    update = schemas["CommentUpdate"]
+    assert set(update["properties"]) == {"body"}
+    assert "required" not in update
+    assert update["properties"]["body"]["type"] == "string"
+
+
 def test_task_enums_are_named_schemas(openapi: dict[str, Any]) -> None:
     schemas = openapi["components"]["schemas"]
 

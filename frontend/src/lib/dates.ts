@@ -54,3 +54,69 @@ export function formatDateOnly(dateOnly: string): string {
   const date = parseDateOnly(dateOnly)
   return date ? DATE_FORMAT.format(date) : dateOnly
 }
+
+// ---------------------------------------------------------------------------------------------
+// Timestamps: exact and relative ("5 minutes ago")
+// ---------------------------------------------------------------------------------------------
+
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+/** "Nov 22, 2026, 9:30 AM" (in the user's locale and time zone). */
+export function formatDateTime(timestamp: string): string {
+  return DATE_TIME_FORMAT.format(new Date(timestamp))
+}
+
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+
+/** Whole calendar days from `earlier` to `later` in the local time zone (DST days count as one). */
+function calendarDaysBetween(earlier: Date, later: Date): number {
+  const start = new Date(earlier.getFullYear(), earlier.getMonth(), earlier.getDate())
+  const end = new Date(later.getFullYear(), later.getMonth(), later.getDate())
+  return Math.round((end.getTime() - start.getTime()) / DAY_MS)
+}
+
+/** Whole calendar months from `earlier` to `later` (Jan 31 to Feb 28 is 0, to Mar 1 is 1). */
+function calendarMonthsBetween(earlier: Date, later: Date): number {
+  const months = (later.getFullYear() - earlier.getFullYear()) * 12 + later.getMonth() - earlier.getMonth()
+  return later.getDate() < earlier.getDate() ? months - 1 : months
+}
+
+const relativeFormats = new Map<string, Intl.RelativeTimeFormat>()
+
+/** `numeric: 'auto'` says "yesterday" and "last week" instead of "1 day ago" and "1 week ago". */
+function relativeFormat(locale: string | undefined): Intl.RelativeTimeFormat {
+  const cacheKey = locale ?? ''
+  let format = relativeFormats.get(cacheKey)
+  if (!format) {
+    format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+    relativeFormats.set(cacheKey, format)
+  }
+  return format
+}
+
+/**
+ * How long before `now` a timestamp was: "just now" (under a minute), "5 minutes ago",
+ * "3 hours ago" (under a day), then by calendar day: "yesterday", "4 days ago", "last week",
+ * "3 weeks ago", "last month", "5 months ago", "last year", "2 years ago". A time after `now`
+ * (the device clock is behind the server's) is "just now". Show the exact time next to it, e.g.
+ * as a tooltip: see `formatDateTime`.
+ */
+export function formatRelativeTime(timestamp: string, now: Date = new Date(), locale?: string): string {
+  const then = new Date(timestamp)
+  const elapsed = now.getTime() - then.getTime()
+  if (Number.isNaN(elapsed)) return timestamp
+  if (elapsed < MINUTE_MS) return 'just now'
+
+  const format = relativeFormat(locale)
+  if (elapsed < HOUR_MS) return format.format(-Math.floor(elapsed / MINUTE_MS), 'minute')
+  if (elapsed < DAY_MS) return format.format(-Math.floor(elapsed / HOUR_MS), 'hour')
+
+  const days = Math.max(1, calendarDaysBetween(then, now))
+  if (days < 7) return format.format(-days, 'day')
+  if (days < 30) return format.format(-Math.floor(days / 7), 'week')
+  const months = Math.max(1, calendarMonthsBetween(then, now))
+  if (months < 12) return format.format(-months, 'month')
+  return format.format(-Math.floor(months / 12), 'year')
+}

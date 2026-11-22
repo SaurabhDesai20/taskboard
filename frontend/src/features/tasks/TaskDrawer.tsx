@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react'
-import type { Member, Project, Task, UUID } from '../../api/types'
+import type { Member, Project, Role, Task, UUID } from '../../api/types'
 import { Modal } from '../../components/Modal'
 import { SelectField } from '../../components/SelectField'
 import { StatusMessage } from '../../components/StatusMessage'
@@ -8,6 +8,7 @@ import { TextField } from '../../components/TextField'
 import { formatDate, todayDateOnly } from '../../lib/dates'
 import { formErrorsFromError } from '../../lib/formErrors'
 import { useForm } from '../../lib/useForm'
+import { CommentsSection } from '../comments/CommentsSection'
 import { DueDate } from './DueDate'
 import { isOverdue } from './dueDates'
 import { isTaskNotFound, useDeleteTask, useTask, useUpdateTask } from './hooks'
@@ -26,6 +27,8 @@ interface TaskDrawerProps {
   canDelete: boolean
   /** Why the details are read-only, shown when `canWrite` is false. */
   readOnlyReason: string
+  /** My role in the workspace, for the comment thread (who may comment, edit, delete). */
+  role: Role
   onClose: () => void
 }
 
@@ -34,7 +37,16 @@ interface TaskDrawerProps {
  * be linked to). A keyboard-operable dialog: focus starts on Close, Tab stays inside, Escape
  * closes and returns focus to the card.
  */
-export function TaskDrawer({ project, taskId, members, canWrite, canDelete, readOnlyReason, onClose }: TaskDrawerProps) {
+export function TaskDrawer({
+  project,
+  taskId,
+  members,
+  canWrite,
+  canDelete,
+  readOnlyReason,
+  role,
+  onClose,
+}: TaskDrawerProps) {
   const query = useTask(project, taskId)
   const notFound = query.isError && isTaskNotFound(query.error)
   const task = notFound ? undefined : query.data
@@ -56,6 +68,7 @@ export function TaskDrawer({ project, taskId, members, canWrite, canDelete, read
         ) : (
           <TaskReadOnly task={task} reason={readOnlyReason} />
         )}
+        <CommentsSection task={task} project={project} role={role} />
         {canDelete ? <DeleteTask key={task.id} task={task} onDeleted={onClose} /> : null}
       </>
     )

@@ -7,14 +7,12 @@ connection and cannot block itself. Their fixture deletes what it committed.
 
 import functools
 import threading
-import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any
 from uuid import UUID
 
 import pytest
-from sqlalchemy import Engine, delete, func, select, text, update
+from sqlalchemy import Engine, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound
@@ -26,9 +24,14 @@ from app.repositories import projects as projects_repo
 from app.schemas.task import TaskCreate, TaskMoveRequest, TaskRead, TaskUpdate
 from app.services import tasks as tasks_service
 from app.services.access import project_access, task_access
+from tests.concurrency import (
+    LOCK_WAIT_TIMEOUT,
+    Background,
+    backend_pid,
+    new_session,
+    wait_until_blocked,
+)
 from tests.factories import create_project, create_task, create_team, create_user, create_workspace
-
-LOCK_WAIT_TIMEOUT = 10.0
 
 
 @dataclass(frozen=True)
@@ -57,88 +60,11 @@ def committed(engine: Engine) -> Iterator[Committed]:
             db.commit()
 
 
-def new_session(engine: Engine) -> Session:
-    """A request's session, configured like app.db.session.get_session_factory()."""
-    return Session(engine, autoflush=False, expire_on_commit=False)
-
-
 def create_in_new_session(committed: Committed, title: str) -> TaskRead:
     """One POST /projects/{pid}/tasks request, on its own connection."""
     with new_session(committed.engine) as db:
         access = project_access(db, committed.project_id, committed.user_id, "task.write")
         return tasks_service.create(db, access, TaskCreate(title=title))
-
-
-class Background:
-    """Run a function on another thread and keep its result or exception."""
-
-    def __init__(self, target: Callable[[], Any]) -> None:
-        self.result: Any = None
-        self.error: BaseException | None = None
-        self._target = target
-        self._thread = threading.Thread(target=self._run, daemon=True)
-
-    def _run(self) -> None:
-        try:
-            self.result = self._target()
-        except BaseException as exc:
-            self.error = exc
-
-    def start(self) -> "Background":
-        self._thread.start()
-        return self
-
-    def join(self) -> Any:
-        self._thread.join(LOCK_WAIT_TIMEOUT)
-        assert not self._thread.is_alive(), "the background request never finished"
-        if self.error is not None:
-            raise self.error
-        return self.result
-
-    @property
-    def running(self) -> bool:
-        return self._thread.is_alive()
-
-
-def server_activity(engine: Engine) -> str:
-    """Every other connection to the server, for failure messages."""
-    query = text(
-        "SELECT pid, datname, state, wait_event_type, pg_blocking_pids(pid) AS blocked_by,"
-        " left(query, 100) AS query FROM pg_stat_activity"
-        " WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()"
-    )
-    with engine.connect() as conn:
-        return "\n".join(str(tuple(row)) for row in conn.execute(query))
-
-
-def backend_pid(db: Session) -> int:
-    """The Postgres process id of the session's connection (starts its transaction)."""
-    pid = db.scalar(select(func.pg_backend_pid()))
-    assert isinstance(pid, int)
-    return pid
-
-
-def wait_until_blocked(engine: Engine, waiter: Background, holder_pid: int) -> None:
-    """Block until `waiter`'s request is waiting for a lock held by the `holder_pid` connection.
-
-    Fails at once, with the request's own error, if it finished instead of waiting.
-    """
-    deadline = time.monotonic() + LOCK_WAIT_TIMEOUT
-    blocked = text(
-        "SELECT count(*) FROM pg_stat_activity WHERE :holder = ANY(pg_blocking_pids(pid))"
-    )
-    with engine.connect() as conn:
-        while time.monotonic() < deadline:
-            if conn.scalar(blocked, {"holder": holder_pid}):
-                return
-            if not waiter.running:
-                waiter.join()
-                pytest.fail("the concurrent request finished without waiting for the lock")
-            time.sleep(0.02)
-    pytest.fail(
-        "the concurrent request never waited for the project lock; connections:\n"
-        + server_activity(engine)
-    )
 
 
 def test_a_create_waits_for_a_concurrent_create_and_takes_the_next_number(

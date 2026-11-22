@@ -14,7 +14,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.services import access as access_service
 from app.services import auth as auth_service
-from app.services.access import ProjectAccess, TaskAccess, WorkspaceAccess
+from app.services.access import CommentAccess, ProjectAccess, TaskAccess, WorkspaceAccess
 from app.services.permissions import Action
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -44,6 +44,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 WorkspaceId = Annotated[UUID, Path(description="Workspace id")]
 ProjectId = Annotated[UUID, Path(description="Project id")]
 TaskId = Annotated[UUID, Path(description="Task id")]
+CommentId = Annotated[UUID, Path(description="Comment id")]
 
 
 def require_role(action: Action) -> Callable[[UUID, Session, User], WorkspaceAccess]:
@@ -98,8 +99,26 @@ def require_task_role(action: Action) -> Callable[[UUID, Session, User], TaskAcc
     return resolve_task_access
 
 
+def require_comment_role(action: Action) -> Callable[[UUID, Session, User], CommentAccess]:
+    """Dependency for `/comments/{cid}` routes: the caller's access to comment `cid`.
+
+    `require_role` for a comment: the service resolves comment -> task -> project -> workspace,
+    then applies the same membership and `permissions.can()` checks, before body validation:
+    - no cookie -> 401 `unauthorized`
+    - comment missing, or caller not a member of its workspace -> 404 "Comment not found"
+    - role below the action's minimum -> 403 `forbidden`, `details.reason = "insufficient_role"`
+    The author-or-admin rule is a business rule: the comments service checks it afterwards.
+    """
+
+    def resolve_comment_access(cid: CommentId, db: DbSession, user: CurrentUser) -> CommentAccess:
+        return access_service.comment_access(db, cid, user.id, action)
+
+    return resolve_comment_access
+
+
 __all__ = [
     "AppSettings",
+    "CommentAccess",
     "CurrentUser",
     "DbSession",
     "ProjectAccess",
@@ -107,6 +126,7 @@ __all__ = [
     "WorkspaceAccess",
     "get_current_user",
     "get_db",
+    "require_comment_role",
     "require_project_role",
     "require_role",
     "require_task_role",

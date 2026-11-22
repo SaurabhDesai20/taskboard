@@ -104,3 +104,21 @@ export function countOwners(members: readonly MemberTarget[]): number {
 export function canLeaveWorkspace(role: Role, ownerCount: number): boolean {
   return role !== 'owner' || ownerCount > 1
 }
+
+// ---------------------------------------------------------------------------------------------
+// Comment rules (contract 3.7)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Editing is author-only, and the author must still be a member or above: admins and owners may
+ * delete other people's comments but never edit them (`403 not_author`). Archived projects are
+ * read-only on top of this; the caller checks that.
+ */
+export function canEditComment(actor: MemberActor, authorId: UUID): boolean {
+  return actor.userId === authorId && can(actor.role, 'comment.edit_own')
+}
+
+/** The author (member or above), or any owner or admin. Allowed in archived projects too. */
+export function canDeleteComment(actor: MemberActor, authorId: UUID): boolean {
+  return can(actor.role, 'comment.delete_any') || canEditComment(actor, authorId)
+}
