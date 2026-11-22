@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router'
 import { AppProviders } from '../app/providers'
+import { flushSyncForRouter } from '../app/routerFlushSync'
 import { routes as appRoutes } from '../app/routes'
 
 export function createTestQueryClient(): QueryClient {
@@ -25,7 +26,7 @@ export function renderRoute({
   const router = createMemoryRouter(routes, { initialEntries: [route] })
   const result = render(
     <AppProviders queryClient={queryClient}>
-      <RouterProvider router={router} />
+      <RouterProvider router={router} flushSync={flushSyncForRouter} />
     </AppProviders>,
   )
   return { ...result, router, queryClient }

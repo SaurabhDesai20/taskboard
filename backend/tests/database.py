@@ -38,6 +38,8 @@ TEST_DATABASE_URL_STR = TEST_DATABASE_URL.render_as_string(hide_password=False)
 # Anything that reaches the app's own engine during tests must hit the test database.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL_STR
 os.environ["APP_ENV"] = "test"
+# Tests sign tokens with their own key (long enough for HS256), not the developer's .env one.
+os.environ["JWT_SECRET"] = "test-only-jwt-secret-0123456789abcdefghijklmnop"
 get_settings.cache_clear()
 
 

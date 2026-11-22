@@ -11,8 +11,14 @@ if (Test-Path $envFile) {
     Write-Host '.env already exists, leaving it unchanged.'
 }
 else {
-    Copy-Item (Join-Path $RepoRoot '.env.example') $envFile
-    Write-Host 'Created .env from .env.example.'
+    # Copy the example and replace the placeholder JWT_SECRET with a random 64-char value.
+    $bytes = New-Object byte[] 48
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $secret = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $content = Get-Content (Join-Path $RepoRoot '.env.example') -Raw
+    $content = $content -replace '(?m)^JWT_SECRET=.*$', "JWT_SECRET=$secret"
+    [System.IO.File]::WriteAllText($envFile, $content)
+    Write-Host 'Created .env from .env.example (with a random JWT_SECRET).'
 }
 
 Write-Host 'Installing backend dependencies (uv sync)...'

@@ -4,6 +4,7 @@ from collections.abc import Iterator
 
 import pytest
 from alembic import command
+from argon2 import PasswordHasher, profiles
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine
@@ -16,6 +17,19 @@ from tests.database import (
     ensure_database_exists,
     reset_schema,
 )
+
+# What frontend/src/api/client.ts sends on every request (docs/api-contract.md 1.4).
+CSRF_HEADERS = {"X-Requested-With": "taskboard"}
+
+
+@pytest.fixture(autouse=True)
+def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production argon2 parameters cost ~100 ms per hash; tests use the cheapest profile."""
+    from app.core import security
+
+    monkeypatch.setattr(
+        security, "password_hasher", PasswordHasher.from_parameters(profiles.CHEAPEST)
+    )
 
 
 @pytest.fixture(scope="session")
@@ -63,5 +77,9 @@ def app(db_session: Session) -> FastAPI:
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app) as test_client:
+    """Sends the CSRF header on every request, like the real UI client.
+
+    To test a request without it: `del client.headers["X-Requested-With"]`.
+    """
+    with TestClient(app, headers=CSRF_HEADERS) as test_client:
         yield test_client

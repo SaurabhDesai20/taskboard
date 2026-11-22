@@ -1,8 +1,19 @@
 // MSW handlers implementing docs/api-contract.md, so the UI runs without the backend.
 // Shared by the browser worker (dev, VITE_API_MOCKING=true) and the Node server (Vitest).
-import { http, HttpResponse } from 'msw'
-import type { HealthResponse } from '../api/types'
+// One file per feature in ./handlers/; in-memory data in ./db.ts.
+import { resetMockDb } from './db'
+import { authHandlers } from './handlers/auth'
+import { healthHandlers } from './handlers/health'
+import { csrfGuard } from './http'
 
 export const handlers = [
-  http.get('/api/health', () => HttpResponse.json<HealthResponse>({ status: 'ok', database: 'ok' })),
+  // First, like the backend middleware: rejects mutating requests without the CSRF header.
+  csrfGuard,
+  ...healthHandlers,
+  ...authHandlers,
 ]
+
+/** Back to the seeded data and no session. Tests call it after each test (src/test/setup.ts). */
+export function resetMockState(): void {
+  resetMockDb()
+}

@@ -32,9 +32,14 @@ The API identifies workspaces by `id`. The UI's `/w/:slug` routes resolve a slug
 ### 1.3 Authentication
 
 - `POST /auth/register` and `POST /auth/login` set the session cookie:
-  `access_token=<JWT>; HttpOnly; SameSite=Lax; Path=/; Max-Age=<JWT_EXPIRE_MINUTES * 60>` plus `Secure` when `COOKIE_SECURE=true` (production).
+  `Set-Cookie: access_token=<JWT>; HttpOnly; Max-Age=<JWT_EXPIRE_MINUTES * 60>; Path=/; SameSite=lax`, plus `; Secure` when `COOKIE_SECURE=true` (production).
+- The token is an HS256 JWT that expires after `JWT_EXPIRE_MINUTES` (default 10080, 7 days). There is no refresh: after expiry the user logs in again.
 - The browser sends the cookie automatically. The UI never reads the token, and nothing auth-related goes in `localStorage` or `sessionStorage`.
-- Every endpoint except `GET /health`, `POST /auth/register` and `POST /auth/login` requires the cookie. A missing, invalid or expired cookie returns `401 unauthorized`.
+- Every endpoint except `GET /health`, `POST /auth/register` and `POST /auth/login` requires the cookie. A missing, invalid, tampered or expired cookie, or one whose account no longer exists, returns:
+
+```json
+{ "error": { "code": "unauthorized", "message": "Authentication required", "details": {} } }
+```
 
 ### 1.4 CSRF header
 
@@ -44,7 +49,17 @@ Every `POST`, `PUT`, `PATCH` and `DELETE` must send:
 X-Requested-With: taskboard
 ```
 
-A mutating request without that exact header gets `403 forbidden` with `details.reason = "csrf"`, checked before authentication. `frontend/src/api/client.ts` adds the header automatically.
+A mutating request without that exact header (the value is case-sensitive) gets `403 forbidden` with `details.reason = "csrf"`. The check runs before routing, validation and authentication, so it applies to every mutating `/api` path, including `/auth/register` and `/auth/login`. `frontend/src/api/client.ts` adds the header automatically.
+
+```json
+{
+  "error": {
+    "code": "forbidden",
+    "message": "Missing or invalid X-Requested-With header",
+    "details": { "reason": "csrf" }
+  }
+}
+```
 
 ### 1.5 Errors
 
@@ -137,12 +152,12 @@ Every non-2xx response uses this envelope:
 
 ### 1.8 Field limits
 
-Strings are trimmed before validation.
+Strings are trimmed before validation, except `password`, which is used exactly as sent (leading and trailing spaces are part of the password).
 
 | Field | Rule |
 |---|---|
 | `email` | Valid email, max 254 chars. Stored and returned lowercase; matching is case-insensitive. |
-| `password` | 8 to 128 chars |
+| `password` | 8 to 128 chars on register. On login: 1 to 128 chars, so a too-short password gets the same `401` as a wrong one. |
 | user `name` | 1 to 100 chars |
 | workspace `name` | 1 to 100 chars |
 | workspace `slug` | 1 to 48 chars, `^[a-z0-9]+(?:-[a-z0-9]+)*$` |
@@ -283,6 +298,22 @@ interface ErrorEnvelope {
 - `Task.comment_count` counts the task's current comments.
 - `Workspace.my_role` is the calling user's role in that workspace. It is included on every workspace response.
 
+### 2.3 OpenAPI schema names
+
+The backend's OpenAPI document (`GET /api/openapi.json`; `scripts\openapi.ps1` writes it to `docs/openapi.json`) names each object below as a component schema. The UI's generated `schema.d.ts` exposes them as `components["schemas"]["<name>"]`. These names are part of the contract: renaming one is a contract change, and `backend/tests/api/test_openapi.py` guards them.
+
+| Contract object | OpenAPI schema | Used by | Phase |
+|---|---|---|---|
+| `User` | `UserRead` | `200`/`201` of `POST /auth/register`, `POST /auth/login`, `GET /auth/me` | 1 |
+| register request body | `RegisterRequest` | `POST /auth/register` | 1 |
+| login request body | `LoginRequest` | `POST /auth/login` | 1 |
+| `ErrorEnvelope` | `ErrorEnvelope` (its `error` is `ErrorBody`) | every documented error response, `422` included | 0 |
+| health response | `HealthRead` | `GET /health` | 0 |
+| session cookie | security scheme `CookieAuth` (`apiKey`, in `cookie`, name `access_token`) | every endpoint that requires the cookie | 1 |
+
+- Error responses (including `422`) are documented with `ErrorEnvelope`. FastAPI's default `HTTPValidationError` schema is not used, because the API never returns that shape.
+- Later phases add rows here as they implement endpoints, following the same pattern: `<Entity>Read` for response objects, `<Entity>Create` / `<Entity>Update` for request bodies, and `<Action>Request` for action bodies.
+
 ---
 
 ## 3. Endpoints
@@ -305,17 +336,17 @@ interface ErrorEnvelope {
 
 ---
 
-### 3.2 Auth (Phase 1)
+### 3.2 Auth (Phase 1, implemented)
 
 #### `POST /auth/register` (public)
 
-Request:
+Request (`RegisterRequest`):
 
 ```json
 { "email": "asha@example.com", "name": "Asha Rao", "password": "correct-horse-battery" }
 ```
 
-`201` (and sets the `access_token` cookie):
+`201` (and sets the `access_token` cookie, which logs the new user in). The returned `email` is the normalized address (trimmed, lowercase) and `name` is trimmed:
 
 ```json
 {
@@ -327,12 +358,12 @@ Request:
 ```
 
 Errors:
-- `409 conflict` with `details.reason = "email_taken"`. Message: `"An account with this email already exists"`.
+- `409 conflict` with `details.reason = "email_taken"`. Message: `"An account with this email already exists"`. Emails are compared case-insensitively, so `ASHA@example.com` conflicts with `asha@example.com`.
 - `422` for an invalid email, a name or password out of range.
 
 #### `POST /auth/login` (public)
 
-Request:
+Request (`LoginRequest`; the email is matched case-insensitively):
 
 ```json
 { "email": "asha@example.com", "password": "correct-horse-battery" }
@@ -347,9 +378,12 @@ Errors:
 
 #### `POST /auth/logout` (auth)
 
-No body. `204`, and the response clears the cookie (`access_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`).
+No body. `204`, and the response clears the cookie:
+`Set-Cookie: access_token=""; expires=<now>; HttpOnly; Max-Age=0; Path=/; SameSite=lax`, plus `; Secure` when `COOKIE_SECURE=true`.
 
-Errors: `401` when not logged in.
+Tokens are stateless: logout only removes the cookie from the browser.
+
+Errors: `401` when not logged in (the `unauthorized` envelope in 1.3).
 
 #### `GET /auth/me` (auth)
 
@@ -364,7 +398,7 @@ Errors: `401` when not logged in.
 }
 ```
 
-Errors: `401` when not logged in. The UI calls this on start with `skipAuthRedirect: true` to decide between the app and the login page.
+Errors: `401` when not logged in (the `unauthorized` envelope in 1.3). The UI calls this on start with `skipAuthRedirect: true` to decide between the app and the login page.
 
 ---
 

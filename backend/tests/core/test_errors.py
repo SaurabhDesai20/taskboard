@@ -112,7 +112,7 @@ def test_unknown_route_returns_not_found_envelope(errors_client: TestClient) -> 
 
 
 def test_wrong_method_returns_method_not_allowed_envelope(errors_client: TestClient) -> None:
-    response = errors_client.post("/api/_test/not-found")
+    response = errors_client.post("/api/_test/not-found", headers={"X-Requested-With": "taskboard"})
 
     assert response.status_code == 405
     assert response.json()["error"]["code"] == "method_not_allowed"
