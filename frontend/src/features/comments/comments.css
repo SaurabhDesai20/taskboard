@@ -1,0 +1,172 @@
+/* Comment count on task cards */
+
+.comment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.comment-count__icon {
+  flex: none;
+}
+
+/* Thread in the task drawer */
+
+.comments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.comments__title:focus {
+  outline: none;
+}
+
+.comments__title:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.comments__count {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.comments__note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.comments__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comments__more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.375rem;
+}
+
+.comments__more .field__error {
+  margin: 0;
+}
+
+/* One comment */
+
+.comment__inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.comment__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.comment--pending .comment__main {
+  opacity: 0.65;
+}
+
+.comment__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.comment__author {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.comment__pending {
+  font-style: italic;
+}
+
+.comment__body {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  /* Plain text: keep the author's line breaks, wrap long words and links. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.comment__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.comment__action {
+  padding: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.comment__action:hover {
+  color: var(--color-link);
+  text-decoration: underline;
+}
+
+.comment__action--danger:hover {
+  color: var(--color-danger);
+}
+
+.comment__edit,
+.comment__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comment__edit .field__label {
+  font-size: 0.8125rem;
+}
+
+.comment__confirm p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.comment__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Composer */
+
+.comment-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comment-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+}

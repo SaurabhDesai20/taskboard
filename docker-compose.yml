@@ -1,0 +1,27 @@
+# The ONLY Docker file in this repo: a local Postgres for development and tests.
+# The app itself runs on the host (uvicorn + vite) and is never containerized.
+# Values come from the repo-root .env (see .env.example).
+
+# Fixed project name so every git worktree shares the same container and volume.
+name: taskboard
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-35432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:

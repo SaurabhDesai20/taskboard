@@ -17,7 +17,7 @@ This file is the single source of truth. Read it fully before doing anything, th
    git worktree add ../taskboard-backend -b agent/backend
    git worktree add ../taskboard-ui -b agent/ui
    ```
-   Merge to `main` at each **Sync Point** (see section 8).
+   Merge back into the **integration branch** (the branch you started on, referred to as the "current branch") at each **Sync Point** (see section 8).
 
 ---
 
@@ -29,6 +29,7 @@ This file is the single source of truth. Read it fully before doing anything, th
 - **Auth:** JWT stored in an **httpOnly, SameSite=Lax cookie**. No tokens in localStorage.
 - **Migrations:** Alembic only. Never use `Base.metadata.create_all()` outside tests.
 - Do not add libraries beyond those listed without a short justification in the PR/commit message.
+- **Git:** work on the **current branch** only. Never switch, create, rename, or delete branches, and never run `git push`, `git merge`, or `git rebase`, unless the human explicitly asks. In Phase 0, do not commit; leave changes for the human to review. The only branches that exist beyond the current one are the two agent worktree branches (`agent/backend`, `agent/ui`), which the **human** creates after Phase 0.
 
 ---
 
@@ -202,7 +203,7 @@ make start       # run FastAPI serving the built frontend (single process, port 
 - Frontend scaffold: Vite + React + TS strict, Router, TanStack Query provider, `api/client.ts`, MSW setup, Vitest config, Vite proxy.
 - Write **CLAUDE.md** from section 3 plus: folder ownership (section 8), commands, and "never do" list (no extra Docker files, no create_all, no business logic in routers, no server state in useState).
 - Write the full **docs/api-contract.md** from section 5, expanded with exact request/response JSON examples for every endpoint. This is what lets both agents work independently.
-- Done when: `make db && make migrate && make backend` serves `/api/health`; `make frontend` shows a blank shell; `make test` passes; first commit on `main`.
+- Done when: `make db && make migrate && make backend` serves `/api/health`; `make frontend` shows a blank shell; `make test` passes. Leave the changes uncommitted on the current branch; the human commits.
 
 ### Phase 1: Auth
 - **B:** `users` model + migration, register/login/logout/me, password hashing (argon2 or bcrypt), JWT cookie, `get_current_user` dependency, CSRF header middleware, tests (duplicate email, wrong password, expired token, missing cookie).
@@ -263,7 +264,7 @@ make start       # run FastAPI serving the built frontend (single process, port 
 3. **Backend publishes OpenAPI** at the end of each phase (`make openapi` writes `docs/openapi.json`). The UI Agent regenerates types from it and fixes any mismatch with its mocks.
 4. **Small commits, conventional messages** (`feat(backend): ...`, `feat(ui): ...`, `test(...)`, `fix(...)`). One commit per logical unit.
 5. **Definition of done per phase** for each agent: code complete, tests written and passing, lint/type-check clean, no TODOs left unexplained, contract matches reality.
-6. **At each Sync Point:** both agents stop, push their branch, the human merges both into `main`, runs the integration check listed in the phase, and both agents rebase on `main` before starting the next phase.
+6. **At each Sync Point:** both agents stop, push their branch, the human merges both into the integration branch (the current branch the project was started on), runs the integration check listed in the phase, and both agents rebase on the integration branch before starting the next phase.
 7. If blocked by the other agent, mock it and note the dependency in `docs/BLOCKERS.md`. Do not edit the other agent's directory.
 
 ---
