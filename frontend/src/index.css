@@ -5,170 +5,379 @@
 }
 
 /*
- * Design tokens. Every color in the app comes from these, so the dark theme only redefines them.
- * The light theme is the default; the dark one applies when the system prefers it (unless the
- * header toggle chose light) or when the toggle chose dark (<html data-theme="dark">).
+ * Design tokens. Every color, radius and shadow in the app comes from these, so the dark theme
+ * only redefines them. The light theme is the default; the dark one applies when the system
+ * prefers it (unless the header toggle chose light) or when the toggle chose dark
+ * (<html data-theme="dark">). The two dark blocks below must stay identical.
+ *
+ * Surfaces are frosted glass: --color-surface is translucent and sits on the page gradient with
+ * --glass-blur behind it. Dense, numerous items (task cards) use --color-surface-solid instead.
+ * Without backdrop-filter support, or with reduced transparency, every surface turns solid.
  */
 :root {
   color-scheme: light;
-  --color-text: #1f2328;
-  --color-text-muted: #57606a;
-  --color-bg: #f6f8fa;
-  --color-surface: #ffffff;
-  /* Board columns and other wells, a step below the page. */
-  --color-surface-sunken: #eef1f4;
-  --color-border: #d0d7de;
-  /* Primary buttons (white text on it). */
-  --color-primary: #0969da;
-  --color-primary-hover: #0757b8;
-  /* Selected navigation items. */
-  --color-primary-subtle: #ddf4ff;
-  --color-on-primary: #ffffff;
-  --color-link: #0969da;
-  /* Error text and borders. */
-  --color-danger: #b42318;
-  --color-danger-hover: #912018;
-  /* Danger buttons (white text on it). */
-  --color-danger-solid: #b42318;
-  --color-danger-solid-hover: #912018;
-  --color-danger-bg: #fef3f2;
-  --color-success: #1a7f37;
-  --color-success-bg: #dafbe1;
-  --color-warning: #7d4e00;
-  --color-warning-bg: #fff8c5;
-  --color-warning-border: #d4a72c;
-  --color-focus: #0969da;
-  --color-backdrop: rgb(31 35 40 / 45%);
-  --shadow-card: 0 1px 2px rgb(31 35 40 / 6%);
-  --shadow-popover: 0 8px 24px rgb(140 149 159 / 20%);
-  --shadow-overlay: 0 16px 48px rgb(31 35 40 / 30%);
-  --skeleton-base: #e6e9ed;
-  --skeleton-shine: #f4f6f8;
-  /* Badges (roles, priorities): text, background, border. */
-  --badge-purple-fg: #6e40c9;
-  --badge-purple-bg: #fbefff;
-  --badge-purple-border: #d8b9ff;
-  --badge-blue-fg: #0757b8;
-  --badge-blue-bg: #ddf4ff;
-  --badge-blue-border: #addcff;
-  --badge-green-fg: #1a7f37;
-  --badge-green-bg: #dafbe1;
-  --badge-green-border: #aceebb;
-  --badge-orange-fg: #9a4c00;
-  --badge-orange-bg: #fff1e5;
-  --badge-orange-border: #ffc896;
-  --radius: 6px;
 
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Type */
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Shape: controls use --radius, cards and panels --radius-lg, the drawer and page panels --radius-xl. */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* Motion (switched off by the reduced-motion rule below). */
+  --duration: 160ms;
+
+  /* Page background: a fixed gradient on <body>, two soft glows on body::before. */
+  --gradient-page: linear-gradient(135deg, #eef2ff 0%, #eff6ff 45%, #ecfeff 100%);
+  --glow-page:
+    radial-gradient(40rem 40rem at 8% -10%, rgb(99 102 241 / 14%), transparent 60%),
+    radial-gradient(36rem 36rem at 100% 110%, rgb(20 184 166 / 12%), transparent 60%);
+
+  --color-text: #1e293b;
+  --color-text-muted: #55647a;
+  /* Solid fallback behind the gradient. */
+  --color-bg: #f1f5ff;
+  /* Glass panels (header, cards, lanes, sections). */
+  --color-surface: rgb(255 255 255 / 72%);
+  /* Task cards, and every surface when glass is off. */
+  --color-surface-solid: #ffffff;
+  /* Wells inside a surface (comment bubbles, table headers). */
+  --color-surface-sunken: rgb(241 245 249 / 60%);
+  /* Modals, the drawer, menus and toasts: they sit over content, so they are more opaque. */
+  --color-surface-overlay: rgb(255 255 255 / 88%);
+  /* A faint highlight on the edge of glass. */
+  --color-glass-edge: rgb(255 255 255 / 65%);
+  --color-border: rgb(148 163 184 / 28%);
+  /* Input and select outlines: 3:1 against every surface they sit on. */
+  --color-border-input: #7a889c;
+  --color-input-bg: rgb(255 255 255 / 70%);
+  /* Small neutral chips: project keys and counts (solid, so their text contrast is fixed). */
+  --color-chip: #e9eef6;
+  /* Hover tint for ghost controls and rows. */
+  --color-hover: rgb(99 102 241 / 7%);
+  /* Secondary buttons: a light tint, white on hover. */
+  --color-button-bg: rgb(255 255 255 / 60%);
+  --color-button-hover: #ffffff;
+  /* Primary buttons (white text on the gradient). */
+  --gradient-primary: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --gradient-primary-hover: linear-gradient(135deg, #4338ca, #6d28d9);
+  /* Solid stand-in for the gradient (same start color, white text passes on it). */
+  --color-primary-fill: #4f46e5;
+  --shadow-primary: 0 1px 2px rgb(79 70 229 / 20%), 0 2px 8px rgb(79 70 229 / 16%);
+  --shadow-primary-hover: 0 6px 20px rgb(79 70 229 / 28%);
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  /* Selected navigation items. */
+  --color-primary-subtle: #eef2ff;
+  --color-primary-border: rgb(99 102 241 / 35%);
+  --color-on-primary: #ffffff;
+  --color-link: #4f46e5;
+  /* Used sparingly: the selected tab's underline. */
+  --color-accent: #0d9488;
+  /* The brand name in the header. */
+  --gradient-brand: linear-gradient(135deg, #4f46e5, #0f766e);
+  /* Error text and borders (rose-700: 4.5:1 on glass and on the danger background). */
+  --color-danger: #be123c;
+  --color-danger-hover: #9f1239;
+  /* Filled danger (white text on it): danger buttons on hover, the overdue accent. */
+  --color-danger-solid: #e11d48;
+  --color-danger-solid-hover: #be123c;
+  --color-danger-bg: #fff1f2;
+  --color-danger-border: rgb(225 29 72 / 25%);
+  --color-success: #0f766e;
+  --color-success-bg: #f0fdfa;
+  --color-warning: #b45309;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fcd34d;
+  --color-focus: #6366f1;
+  --focus-halo: 0 0 0 4px rgb(99 102 241 / 25%);
+  --color-selection: rgb(99 102 241 / 22%);
+  --color-scrollbar: rgb(148 163 184 / 45%);
+  --color-backdrop: rgb(15 23 42 / 35%);
+  --backdrop-blur: blur(4px);
+  --glass-blur: blur(12px) saturate(140%);
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 4%), 0 4px 16px rgb(15 23 42 / 6%);
+  --shadow-card-hover: 0 8px 24px rgb(15 23 42 / 10%);
+  --shadow-popover: 0 12px 32px rgb(15 23 42 / 12%);
+  --shadow-overlay: 0 24px 64px rgb(15 23 42 / 18%);
+  --skeleton-base: rgb(148 163 184 / 20%);
+  --skeleton-shine: rgb(255 255 255 / 60%);
+  /* Avatars: initials on a soft indigo-to-teal fill. */
+  --gradient-avatar: linear-gradient(135deg, #e0e7ff, #ccfbf1);
+  --color-on-avatar: #3730a3;
+  --color-avatar-ring: rgb(99 102 241 / 18%);
+  /* Badges (roles, priorities): soft pastel pills. Text, background, border. */
+  --badge-purple-fg: #6d28d9;
+  --badge-purple-bg: #f5f3ff;
+  --badge-purple-border: rgb(139 92 246 / 25%);
+  --badge-blue-fg: #1d4ed8;
+  --badge-blue-bg: #eff6ff;
+  --badge-blue-border: rgb(59 130 246 / 25%);
+  --badge-green-fg: #047857;
+  --badge-green-bg: #ecfdf5;
+  --badge-green-border: rgb(16 185 129 / 25%);
+  --badge-orange-fg: #c2410c;
+  --badge-orange-bg: #fff7ed;
+  --badge-orange-border: rgb(249 115 22 / 25%);
+  --badge-rose-fg: #be123c;
+  --badge-rose-bg: #fff1f2;
+  --badge-rose-border: rgb(225 29 72 / 25%);
+  --badge-neutral-fg: #55647a;
+  --badge-neutral-bg: #f1f5f9;
+  --badge-neutral-border: rgb(148 163 184 / 30%);
+
+  /* Keyboard focus scrolled into view stays clear of the sticky header. */
+  scroll-padding-top: 5.5rem;
+  font-family: var(--font-sans);
   line-height: 1.5;
   color: var(--color-text);
-  background-color: var(--color-bg);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --color-text: #e6edf3;
-    --color-text-muted: #9ea7b3;
-    --color-bg: #0d1117;
-    --color-surface: #161b22;
-    --color-surface-sunken: #10151b;
-    --color-border: #30363d;
-    --color-primary: #1f6feb;
-    --color-primary-hover: #1858c4;
-    --color-primary-subtle: #132339;
+    --gradient-page: linear-gradient(135deg, #0b1020 0%, #121a3a 50%, #0e1f2a 100%);
+    --glow-page:
+      radial-gradient(40rem 40rem at 8% -10%, rgb(99 102 241 / 18%), transparent 60%),
+      radial-gradient(36rem 36rem at 100% 110%, rgb(45 212 191 / 10%), transparent 60%);
+    --color-text: #e2e8f0;
+    --color-text-muted: #94a3b8;
+    --color-bg: #0b1020;
+    --color-surface: rgb(17 24 39 / 62%);
+    --color-surface-solid: #111827;
+    --color-surface-sunken: rgb(15 23 42 / 45%);
+    --color-surface-overlay: rgb(17 24 39 / 86%);
+    --color-glass-edge: rgb(255 255 255 / 7%);
+    --color-border: rgb(148 163 184 / 16%);
+    --color-border-input: #6b7a90;
+    --color-input-bg: rgb(15 23 42 / 45%);
+    --color-chip: #1e293b;
+    --color-hover: rgb(148 163 184 / 10%);
+    --color-button-bg: rgb(148 163 184 / 8%);
+    --color-button-hover: rgb(148 163 184 / 16%);
+    --shadow-primary: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 10px rgb(79 70 229 / 25%);
+    --shadow-primary-hover: 0 6px 20px rgb(99 102 241 / 35%);
+    --color-primary: #818cf8;
+    --color-primary-hover: #a5b4fc;
+    --color-primary-subtle: rgb(99 102 241 / 18%);
+    --color-primary-border: rgb(129 140 248 / 40%);
     --color-on-primary: #ffffff;
-    --color-link: #58a6ff;
-    --color-danger: #ff7b72;
-    --color-danger-hover: #ffa198;
-    --color-danger-solid: #c93c37;
-    --color-danger-solid-hover: #a8302c;
-    --color-danger-bg: #2d1517;
-    --color-success: #3fb950;
-    --color-success-bg: #0f2a1a;
-    --color-warning: #e3b341;
-    --color-warning-bg: #2b2111;
-    --color-warning-border: #9e6a03;
-    --color-focus: #58a6ff;
-    --color-backdrop: rgb(1 4 9 / 70%);
-    --shadow-card: 0 1px 2px rgb(1 4 9 / 40%);
-    --shadow-popover: 0 8px 24px rgb(1 4 9 / 60%);
-    --shadow-overlay: 0 16px 48px rgb(1 4 9 / 70%);
-    --skeleton-base: #21262d;
-    --skeleton-shine: #2d333b;
-    --badge-purple-fg: #d2a8ff;
-    --badge-purple-bg: #271d3a;
-    --badge-purple-border: #8957e5;
-    --badge-blue-fg: #79c0ff;
-    --badge-blue-bg: #0d2847;
-    --badge-blue-border: #1f6feb;
-    --badge-green-fg: #56d364;
-    --badge-green-bg: #0f2a1a;
-    --badge-green-border: #238636;
-    --badge-orange-fg: #ffa657;
-    --badge-orange-bg: #341c0b;
-    --badge-orange-border: #9a4c00;
+    --color-link: #818cf8;
+    --color-accent: #2dd4bf;
+    --gradient-brand: linear-gradient(135deg, #a5b4fc, #5eead4);
+    --color-danger: #fb7185;
+    --color-danger-hover: #fda4af;
+    --color-danger-solid: #e11d48;
+    --color-danger-solid-hover: #be123c;
+    --color-danger-bg: rgb(225 29 72 / 15%);
+    --color-danger-border: rgb(251 113 133 / 30%);
+    --color-success: #5eead4;
+    --color-success-bg: rgb(20 184 166 / 14%);
+    --color-warning: #fcd34d;
+    --color-warning-bg: rgb(245 158 11 / 12%);
+    --color-warning-border: rgb(252 211 77 / 30%);
+    --color-focus: #818cf8;
+    --focus-halo: 0 0 0 4px rgb(129 140 248 / 30%);
+    --color-selection: rgb(129 140 248 / 35%);
+    --color-scrollbar: rgb(148 163 184 / 35%);
+    --color-backdrop: rgb(2 6 23 / 60%);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 16px rgb(0 0 0 / 24%);
+    --shadow-card-hover: 0 8px 24px rgb(0 0 0 / 40%);
+    --shadow-popover: 0 12px 32px rgb(0 0 0 / 45%);
+    --shadow-overlay: 0 24px 64px rgb(0 0 0 / 55%);
+    --skeleton-base: rgb(148 163 184 / 12%);
+    --skeleton-shine: rgb(255 255 255 / 6%);
+    --gradient-avatar: linear-gradient(135deg, #3730a3, #115e59);
+    --color-on-avatar: #e0e7ff;
+    --color-avatar-ring: rgb(255 255 255 / 8%);
+    --badge-purple-fg: #c4b5fd;
+    --badge-purple-bg: rgb(139 92 246 / 16%);
+    --badge-purple-border: rgb(139 92 246 / 30%);
+    --badge-blue-fg: #93c5fd;
+    --badge-blue-bg: rgb(59 130 246 / 16%);
+    --badge-blue-border: rgb(59 130 246 / 30%);
+    --badge-green-fg: #6ee7b7;
+    --badge-green-bg: rgb(16 185 129 / 14%);
+    --badge-green-border: rgb(16 185 129 / 28%);
+    --badge-orange-fg: #fdba74;
+    --badge-orange-bg: rgb(249 115 22 / 14%);
+    --badge-orange-border: rgb(249 115 22 / 28%);
+    --badge-rose-fg: #fda4af;
+    --badge-rose-bg: rgb(225 29 72 / 16%);
+    --badge-rose-border: rgb(225 29 72 / 30%);
+    --badge-neutral-fg: #cbd5e1;
+    --badge-neutral-bg: rgb(148 163 184 / 12%);
+    --badge-neutral-border: rgb(148 163 184 / 22%);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-text: #e6edf3;
-  --color-text-muted: #9ea7b3;
-  --color-bg: #0d1117;
-  --color-surface: #161b22;
-  --color-surface-sunken: #10151b;
-  --color-border: #30363d;
-  --color-primary: #1f6feb;
-  --color-primary-hover: #1858c4;
-  --color-primary-subtle: #132339;
+  --gradient-page: linear-gradient(135deg, #0b1020 0%, #121a3a 50%, #0e1f2a 100%);
+  --glow-page:
+    radial-gradient(40rem 40rem at 8% -10%, rgb(99 102 241 / 18%), transparent 60%),
+    radial-gradient(36rem 36rem at 100% 110%, rgb(45 212 191 / 10%), transparent 60%);
+  --color-text: #e2e8f0;
+  --color-text-muted: #94a3b8;
+  --color-bg: #0b1020;
+  --color-surface: rgb(17 24 39 / 62%);
+  --color-surface-solid: #111827;
+  --color-surface-sunken: rgb(15 23 42 / 45%);
+  --color-surface-overlay: rgb(17 24 39 / 86%);
+  --color-glass-edge: rgb(255 255 255 / 7%);
+  --color-border: rgb(148 163 184 / 16%);
+  --color-border-input: #6b7a90;
+  --color-input-bg: rgb(15 23 42 / 45%);
+  --color-chip: #1e293b;
+  --color-hover: rgb(148 163 184 / 10%);
+  --color-button-bg: rgb(148 163 184 / 8%);
+  --color-button-hover: rgb(148 163 184 / 16%);
+  --shadow-primary: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 10px rgb(79 70 229 / 25%);
+  --shadow-primary-hover: 0 6px 20px rgb(99 102 241 / 35%);
+  --color-primary: #818cf8;
+  --color-primary-hover: #a5b4fc;
+  --color-primary-subtle: rgb(99 102 241 / 18%);
+  --color-primary-border: rgb(129 140 248 / 40%);
   --color-on-primary: #ffffff;
-  --color-link: #58a6ff;
-  --color-danger: #ff7b72;
-  --color-danger-hover: #ffa198;
-  --color-danger-solid: #c93c37;
-  --color-danger-solid-hover: #a8302c;
-  --color-danger-bg: #2d1517;
-  --color-success: #3fb950;
-  --color-success-bg: #0f2a1a;
-  --color-warning: #e3b341;
-  --color-warning-bg: #2b2111;
-  --color-warning-border: #9e6a03;
-  --color-focus: #58a6ff;
-  --color-backdrop: rgb(1 4 9 / 70%);
-  --shadow-card: 0 1px 2px rgb(1 4 9 / 40%);
-  --shadow-popover: 0 8px 24px rgb(1 4 9 / 60%);
-  --shadow-overlay: 0 16px 48px rgb(1 4 9 / 70%);
-  --skeleton-base: #21262d;
-  --skeleton-shine: #2d333b;
-  --badge-purple-fg: #d2a8ff;
-  --badge-purple-bg: #271d3a;
-  --badge-purple-border: #8957e5;
-  --badge-blue-fg: #79c0ff;
-  --badge-blue-bg: #0d2847;
-  --badge-blue-border: #1f6feb;
-  --badge-green-fg: #56d364;
-  --badge-green-bg: #0f2a1a;
-  --badge-green-border: #238636;
-  --badge-orange-fg: #ffa657;
-  --badge-orange-bg: #341c0b;
-  --badge-orange-border: #9a4c00;
+  --color-link: #818cf8;
+  --color-accent: #2dd4bf;
+  --gradient-brand: linear-gradient(135deg, #a5b4fc, #5eead4);
+  --color-danger: #fb7185;
+  --color-danger-hover: #fda4af;
+  --color-danger-solid: #e11d48;
+  --color-danger-solid-hover: #be123c;
+  --color-danger-bg: rgb(225 29 72 / 15%);
+  --color-danger-border: rgb(251 113 133 / 30%);
+  --color-success: #5eead4;
+  --color-success-bg: rgb(20 184 166 / 14%);
+  --color-warning: #fcd34d;
+  --color-warning-bg: rgb(245 158 11 / 12%);
+  --color-warning-border: rgb(252 211 77 / 30%);
+  --color-focus: #818cf8;
+  --focus-halo: 0 0 0 4px rgb(129 140 248 / 30%);
+  --color-selection: rgb(129 140 248 / 35%);
+  --color-scrollbar: rgb(148 163 184 / 35%);
+  --color-backdrop: rgb(2 6 23 / 60%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 16px rgb(0 0 0 / 24%);
+  --shadow-card-hover: 0 8px 24px rgb(0 0 0 / 40%);
+  --shadow-popover: 0 12px 32px rgb(0 0 0 / 45%);
+  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 55%);
+  --skeleton-base: rgb(148 163 184 / 12%);
+  --skeleton-shine: rgb(255 255 255 / 6%);
+  --gradient-avatar: linear-gradient(135deg, #3730a3, #115e59);
+  --color-on-avatar: #e0e7ff;
+  --color-avatar-ring: rgb(255 255 255 / 8%);
+  --badge-purple-fg: #c4b5fd;
+  --badge-purple-bg: rgb(139 92 246 / 16%);
+  --badge-purple-border: rgb(139 92 246 / 30%);
+  --badge-blue-fg: #93c5fd;
+  --badge-blue-bg: rgb(59 130 246 / 16%);
+  --badge-blue-border: rgb(59 130 246 / 30%);
+  --badge-green-fg: #6ee7b7;
+  --badge-green-bg: rgb(16 185 129 / 14%);
+  --badge-green-border: rgb(16 185 129 / 28%);
+  --badge-orange-fg: #fdba74;
+  --badge-orange-bg: rgb(249 115 22 / 14%);
+  --badge-orange-border: rgb(249 115 22 / 28%);
+  --badge-rose-fg: #fda4af;
+  --badge-rose-bg: rgb(225 29 72 / 16%);
+  --badge-rose-border: rgb(225 29 72 / 30%);
+  --badge-neutral-fg: #cbd5e1;
+  --badge-neutral-bg: rgb(148 163 184 / 12%);
+  --badge-neutral-border: rgb(148 163 184 / 22%);
 }
 
+/*
+ * No backdrop-filter in this browser: solid surfaces, so text never sits on see-through glass.
+ * (The repeated :root outranks both theme blocks; the solid color follows the theme.)
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root:root:root {
+    --color-surface: var(--color-surface-solid);
+    --color-surface-overlay: var(--color-surface-solid);
+  }
+}
+
+/* People who ask for less transparency get solid surfaces and no blur. */
+@media (prefers-reduced-transparency: reduce) {
+  :root:root:root {
+    --color-surface: var(--color-surface-solid);
+    --color-surface-overlay: var(--color-surface-solid);
+    --glass-blur: none;
+    --backdrop-blur: none;
+  }
+}
+
+/*
+ * The gradient is on <body> and <html> has no background of its own, so it is propagated to the
+ * whole canvas: it covers the viewport at any scroll position. The glows are a fixed layer
+ * behind all content (z-index -1 in the root stacking context; body must not create one).
+ */
 body {
-  margin: 0;
   min-height: 100vh;
+  margin: 0;
   color: var(--color-text);
   background-color: var(--color-bg);
+  background-image: var(--gradient-page);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+  background-image: var(--glow-page);
+}
+
+::selection {
+  background-color: var(--color-selection);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.25rem;
+  letter-spacing: -0.015em;
+}
+
+h3 {
+  font-size: 1.0625rem;
+}
+
+h4 {
+  font-size: 1rem;
 }
 
 a {
   color: var(--color-link);
+  text-underline-offset: 0.15em;
 }
 
+/* A solid ring plus a soft halo. Rules that remove the ring must remove the halo too. */
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+  box-shadow: var(--focus-halo);
 }
 
 /* No animation or smooth movement for people who ask for less motion. */
@@ -183,34 +392,57 @@ a {
   }
 }
 
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Menus and panels that drop down from their button. */
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+}
+
 /* "Skip to main content": hidden until it receives keyboard focus. */
 .skip-link {
   position: absolute;
   top: -4rem;
-  left: 0.5rem;
+  left: 1rem;
   z-index: 400;
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1.125rem;
   font-weight: 600;
   color: var(--color-link);
-  background-color: var(--color-surface);
+  background-color: var(--color-surface-solid);
   border: 2px solid var(--color-focus);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-popover);
 }
 
 .skip-link:focus {
-  top: 0.5rem;
+  top: 0.75rem;
 }
 
-/* App shell */
+/* App shell: a slim floating glass bar, sticky at the top */
 
 .app-header {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 50;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  padding: 0.75rem 1.5rem;
+  margin: 0.75rem 1rem 0;
+  padding: 0.5rem 0.75rem 0.5rem 1.25rem;
   background-color: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .app-header__nav {
@@ -220,9 +452,21 @@ a {
 
 .app-header__brand {
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: inherit;
   text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+/* The brand name in gradient ink, where text can be clipped to a background. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .app-header__brand {
+    color: transparent;
+    background-image: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
 }
 
 .app-header__end {
@@ -233,22 +477,36 @@ a {
 }
 
 .app-main {
-  padding: 1.5rem;
+  padding: 2rem 1.5rem 3rem;
 }
 
 /* Focused only to move the reading position (skip link, a removed element): no ring around the page. */
 .app-main:focus {
   outline: none;
+  box-shadow: none;
 }
 
 /* Tablets and smaller: tighter spacing, so the content keeps its width. */
 @media (max-width: 48rem) {
   .app-header {
-    padding: 0.5rem 1rem;
+    top: 0.5rem;
+    margin: 0.5rem 0.5rem 0;
+    padding: 0.5rem 0.75rem;
   }
 
   .app-main {
-    padding: 1rem;
+    padding: 1.25rem 1rem 2rem;
+  }
+}
+
+/* Phones: the header may wrap to two rows, so it scrolls away instead of covering the page. */
+@media (max-width: 40rem) {
+  :root {
+    scroll-padding-top: 0;
+  }
+
+  .app-header {
+    position: static;
   }
 }
 
@@ -262,15 +520,18 @@ a {
   height: 2.25rem;
   padding: 0;
   color: var(--color-text-muted);
-  background: none;
+  background-color: var(--color-button-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-full);
   cursor: pointer;
+  transition:
+    color var(--duration) ease,
+    background-color var(--duration) ease;
 }
 
 .theme-toggle:hover {
   color: var(--color-text);
-  background-color: var(--color-bg);
+  background-color: var(--color-hover);
 }
 
 .api-status {
@@ -285,47 +546,64 @@ a {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  /* As tall as a text input, so they line up in a row. */
+  padding: 0.5625rem 1.125rem;
   font: inherit;
   font-weight: 500;
   color: var(--color-text);
-  background-color: var(--color-surface);
+  background-color: var(--color-button-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   cursor: pointer;
+  transition:
+    color var(--duration) ease,
+    background-color var(--duration) ease,
+    border-color var(--duration) ease,
+    box-shadow var(--duration) ease;
 }
 
 .button:hover:not(:disabled) {
-  background-color: var(--color-bg);
+  background-color: var(--color-button-hover);
+  border-color: var(--color-primary-border);
 }
 
 .button:disabled {
   cursor: not-allowed;
-  opacity: 0.65;
+  opacity: 0.55;
 }
 
 .button--primary {
   color: var(--color-on-primary);
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
+  background-color: var(--color-primary-fill);
+  background-image: var(--gradient-primary);
+  /* The gradient runs under the (transparent) border too, without a seam. */
+  background-origin: border-box;
+  border-color: transparent;
+  box-shadow: var(--shadow-primary);
 }
 
 .button--primary:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
+  background-color: var(--color-primary-fill);
+  background-image: var(--gradient-primary-hover);
+  border-color: transparent;
+  box-shadow: var(--shadow-primary-hover);
 }
 
+/* Soft rose at rest, solid rose on hover. */
 .button--danger {
+  color: var(--color-danger);
+  background-color: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+}
+
+.button--danger:hover:not(:disabled) {
   color: var(--color-on-primary);
   background-color: var(--color-danger-solid);
   border-color: var(--color-danger-solid);
 }
 
-.button--danger:hover:not(:disabled) {
-  background-color: var(--color-danger-solid-hover);
-}
-
 .button--small {
-  padding: 0.25rem 0.75rem;
+  padding: 0.3125rem 0.75rem;
   font-size: 0.875rem;
 }
 
@@ -334,20 +612,42 @@ a {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.375rem;
 }
 
 .field__label {
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
 .field__input {
-  padding: 0.5rem 0.75rem;
+  padding: 0.5625rem 0.875rem;
   font: inherit;
   color: inherit;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background-color: var(--color-input-bg);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius);
+  transition:
+    border-color var(--duration) ease,
+    background-color var(--duration) ease,
+    box-shadow var(--duration) ease;
+}
+
+.field__input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.field__input:focus-visible {
+  outline-offset: 1px;
+  background-color: var(--color-surface-solid);
+  border-color: var(--color-focus);
+}
+
+/* The open list of a select: solid, in the theme's colors. */
+.field__input option {
+  color: var(--color-text);
+  background-color: var(--color-surface-solid);
 }
 
 .field__input[aria-invalid='true'] {
@@ -379,7 +679,7 @@ a {
 .alert--error {
   color: var(--color-danger);
   background-color: var(--color-danger-bg);
-  border-color: var(--color-danger);
+  border-color: var(--color-danger-border);
 }
 
 .status-message {
@@ -411,7 +711,7 @@ a {
 
 .notice {
   margin: 0;
-  padding: 0.5rem 0.75rem;
+  padding: 0.625rem 0.875rem;
   color: var(--color-success);
   background-color: var(--color-success-bg);
   border-radius: var(--radius);
@@ -422,11 +722,13 @@ a {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 1.5rem;
+  padding: 1.75rem 1.5rem;
   color: var(--color-text-muted);
   background-color: var(--color-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 
 .empty-state p {
@@ -459,7 +761,7 @@ a {
 .page {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
   max-width: 64rem;
   margin: 0 auto;
 }
@@ -481,7 +783,7 @@ a {
 .stack-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.125rem;
 }
 
 .inline-form {
@@ -506,9 +808,9 @@ a {
   flex: 1 1 14rem;
 }
 
-/* The button lines up with the inputs, below their labels. */
+/* The button lines up with the inputs, below their labels (label line + field gap). */
 .inline-form__row > .button {
-  margin-top: 1.75rem;
+  margin-top: 1.6875rem;
 }
 
 .details {
@@ -525,6 +827,7 @@ a {
 .details dt {
   min-width: 6rem;
   font-weight: 500;
+  color: var(--color-text-muted);
 }
 
 .details dd {
@@ -535,12 +838,12 @@ a {
 
 .role-badge {
   display: inline-block;
-  padding: 0.0625rem 0.5rem;
+  padding: 0.0625rem 0.5625rem;
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.5;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .role-badge--owner {
@@ -562,12 +865,12 @@ a {
 }
 
 .role-badge--viewer {
-  color: var(--color-text-muted);
-  background-color: var(--color-bg);
-  border-color: var(--color-border);
+  color: var(--badge-neutral-fg);
+  background-color: var(--badge-neutral-bg);
+  border-color: var(--badge-neutral-border);
 }
 
-/* Modal dialog */
+/* Modal dialog: frosted glass over a dimmed, blurred page */
 
 .modal-backdrop {
   position: fixed;
@@ -579,18 +882,32 @@ a {
   padding: 10vh 1rem 1rem;
   overflow-y: auto;
   background-color: var(--color-backdrop);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  backdrop-filter: var(--backdrop-blur);
+  animation: fade-in var(--duration) ease-out;
 }
 
 .modal {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
   width: 100%;
   max-width: 28rem;
-  padding: 1.5rem;
-  background-color: var(--color-surface);
-  border-radius: var(--radius);
+  padding: 1.75rem;
+  background-color: var(--color-surface-overlay);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
+  animation: modal-in 200ms ease-out;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.98);
+  }
 }
 
 .modal__title {
@@ -635,6 +952,7 @@ a {
   width: 1rem;
   height: 1rem;
   margin: 0;
+  accent-color: var(--color-primary-fill);
 }
 
 /* Section heading with actions on the right */
@@ -677,6 +995,14 @@ a {
   min-width: 0;
 }
 
+.breadcrumbs__item a {
+  text-decoration: none;
+}
+
+.breadcrumbs__item a:hover {
+  text-decoration: underline;
+}
+
 .breadcrumbs__item + .breadcrumbs__item::before {
   margin: 0 0.5rem;
   color: var(--color-text-muted);
@@ -705,32 +1031,36 @@ a {
 
 .status-badge {
   display: inline-block;
-  padding: 0.0625rem 0.5rem;
+  padding: 0.0625rem 0.5625rem;
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.5;
   color: var(--color-warning);
   background-color: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .notice:focus {
   outline: none;
+  box-shadow: none;
 }
 
 /* Header links (My tasks) */
 
 .app-header__link {
-  padding: 0.25rem 0.5rem;
+  padding: 0.375rem 0.75rem;
   font-weight: 500;
   color: inherit;
   text-decoration: none;
   border-radius: var(--radius);
+  transition:
+    color var(--duration) ease,
+    background-color var(--duration) ease;
 }
 
 .app-header__link:hover {
-  background-color: var(--color-bg);
+  background-color: var(--color-hover);
 }
 
 .app-header__link[aria-current='page'] {
@@ -738,7 +1068,7 @@ a {
   background-color: var(--color-primary-subtle);
 }
 
-/* Modal as a drawer: a full-height panel on the right */
+/* Modal as a drawer: a full-height glass panel on the right, rounded on its inner edge */
 
 .modal-backdrop--drawer {
   justify-content: flex-end;
@@ -749,14 +1079,24 @@ a {
   position: relative;
   max-width: 36rem;
   min-height: 100%;
-  border-radius: 0;
+  border-width: 0 0 0 1px;
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
   overflow-y: auto;
+  animation: drawer-in 200ms ease-out;
 }
 
-/* Narrow screens: the drawer takes the full width, with less padding. */
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+}
+
+/* Narrow screens: the drawer takes the full width, with less padding and square edges. */
 @media (max-width: 40rem) {
   .modal--drawer {
     padding: 1rem;
+    border-radius: 0;
   }
 }
 
@@ -764,15 +1104,18 @@ a {
 
 .avatar {
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   width: 2rem;
   height: 2rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-on-primary);
-  background-color: var(--color-primary);
-  border-radius: 50%;
+  color: var(--color-on-avatar);
+  background-color: var(--color-primary-subtle);
+  background-image: var(--gradient-avatar);
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 1px var(--color-avatar-ring);
 }
 
 .avatar--small {
@@ -781,12 +1124,12 @@ a {
   font-size: 0.625rem;
 }
 
-/* Tabs (components/Tabs.tsx) */
+/* Tabs (components/Tabs.tsx): an accent underline on the selected tab */
 
 .tabs {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .tabs__list {
@@ -796,32 +1139,43 @@ a {
 }
 
 .tabs__tab {
-  padding: 0.5rem 0.75rem;
+  /* The selected underline sits on the list's hairline. */
+  margin-bottom: -1px;
+  padding: 0.5rem 0.875rem;
   font: inherit;
+  font-weight: 500;
   color: var(--color-text-muted);
   background: none;
   border: 0;
   border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   cursor: pointer;
+  transition:
+    color var(--duration) ease,
+    background-color var(--duration) ease,
+    border-color var(--duration) ease;
 }
 
 .tabs__tab:hover {
   color: var(--color-text);
+  background-color: var(--color-hover);
 }
 
 .tabs__tab[aria-selected='true'] {
   font-weight: 600;
   color: var(--color-text);
-  border-bottom-color: var(--color-primary);
+  border-bottom-color: var(--color-accent);
 }
 
 .tabs__panel:focus {
   outline: none;
+  box-shadow: none;
 }
 
 .tabs__panel:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+  box-shadow: var(--focus-halo);
 }
 
 /* Toasts (components/ToastProvider.tsx): bottom right, newest last */
@@ -852,46 +1206,42 @@ a {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
-  gap: 0.625rem;
-  padding: 0.75rem 0.75rem 0.75rem 1rem;
+  gap: 0.75rem;
+  padding: 0.75rem 0.75rem 0.75rem 0.875rem;
   color: var(--color-text);
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left: 4px solid var(--color-success);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-overlay);
+  background-color: var(--color-surface-overlay);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
   pointer-events: auto;
-  animation: toast-in 160ms ease-out;
+  animation: toast-in 180ms ease-out;
 }
 
-.toast--error {
-  border-left-color: var(--color-danger);
-}
-
-.toast--info {
-  border-left-color: var(--color-primary);
-}
-
+/* The tone shows in the icon: a soft colored circle with a symbol. */
 .toast__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  margin-top: 0.125rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--color-on-primary);
-  background-color: var(--color-success);
-  border-radius: 50%;
+  color: var(--color-success);
+  background-color: var(--color-success-bg);
+  border-radius: var(--radius-full);
 }
 
 .toast--error .toast__icon {
-  background-color: var(--color-danger-solid);
+  color: var(--color-danger);
+  background-color: var(--color-danger-bg);
 }
 
 .toast--info .toast__icon {
-  background-color: var(--color-primary);
+  color: var(--color-link);
+  background-color: var(--color-primary-subtle);
 }
 
 .toast__message {
@@ -911,13 +1261,16 @@ a {
   color: var(--color-text-muted);
   background: none;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--radius-full);
   cursor: pointer;
+  transition:
+    color var(--duration) ease,
+    background-color var(--duration) ease;
 }
 
 .toast__dismiss:hover {
   color: var(--color-text);
-  background-color: var(--color-bg);
+  background-color: var(--color-hover);
 }
 
 @keyframes toast-in {
@@ -936,7 +1289,7 @@ a {
   height: 1rem;
   overflow: hidden;
   background-color: var(--skeleton-base);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .skeleton--round {
@@ -983,10 +1336,13 @@ a {
   flex-direction: column;
   gap: 0.625rem;
   min-height: 6.5rem;
-  padding: 1rem;
+  padding: 1.25rem;
   background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .skeleton-list {
@@ -1020,10 +1376,13 @@ a {
   gap: 1rem;
   max-width: 40rem;
   margin: 2rem auto;
-  padding: 2rem;
+  padding: 2.25rem;
   background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .error-fallback h1,
@@ -1035,4 +1394,13 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* Thin, quiet scrollbars on the areas that scroll sideways. */
+.board,
+.table-scroll,
+.task-table__wrapper,
+.workspace__nav {
+  scrollbar-color: var(--color-scrollbar) transparent;
+  scrollbar-width: thin;
 }

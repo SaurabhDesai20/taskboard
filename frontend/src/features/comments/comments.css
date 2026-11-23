@@ -12,23 +12,25 @@
   flex: none;
 }
 
-/* Thread in the task drawer */
+/* Thread in the task drawer (it shares the drawer's glass; no nested blur) */
 
 .comments {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding-top: 1rem;
+  gap: 1rem;
+  padding-top: 1.25rem;
   border-top: 1px solid var(--color-border);
 }
 
 .comments__title:focus {
   outline: none;
+  box-shadow: none;
 }
 
 .comments__title:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+  box-shadow: var(--focus-halo);
 }
 
 .comments__count {
@@ -45,7 +47,7 @@
 .comments__list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -101,15 +103,16 @@
   font-style: italic;
 }
 
+/* A soft bubble, its top-left corner pointing at the author. */
 .comment__body {
   margin: 0;
-  padding: 0.5rem 0.75rem;
+  padding: 0.625rem 0.875rem;
   /* Plain text: keep the author's line breaks, wrap long words and links. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background-color: var(--color-bg);
+  background-color: var(--color-surface-sunken);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: 0.25rem var(--radius) var(--radius);
 }
 
 .comment__actions {
@@ -124,7 +127,9 @@
   color: var(--color-text-muted);
   background: none;
   border: 0;
+  border-radius: 0.25rem;
   cursor: pointer;
+  transition: color var(--duration) ease;
 }
 
 .comment__action:hover {

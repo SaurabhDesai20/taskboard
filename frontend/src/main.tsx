@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app/App'
+// Inter, self-hosted: the CSP only allows fonts from the app itself (font-src 'self').
+import '@fontsource-variable/inter'
 import './index.css'
 import { applyTheme, storedTheme } from './lib/theme'
 

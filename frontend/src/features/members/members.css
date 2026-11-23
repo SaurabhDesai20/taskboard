@@ -1,12 +1,13 @@
 /* Members table on the workspace settings page */
 
+/* Spacing, not a rule, sets the form apart from the table. */
 .add-member {
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
 }
 
 .table-scroll {
   overflow-x: auto;
+  border-radius: var(--radius);
 }
 
 .members {
@@ -17,9 +18,10 @@
   font-size: 0.9375rem;
 }
 
+/* No grid lines: rows split by faint hairlines, tinted on hover. */
 .members th,
 .members td {
-  padding: 0.625rem 0.5rem;
+  padding: 0.75rem;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--color-border);
@@ -29,6 +31,20 @@
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text-muted);
+  background-color: var(--color-surface-sunken);
+}
+
+.members tbody tr {
+  transition: background-color var(--duration) ease;
+}
+
+.members tbody tr:hover {
+  background-color: var(--color-hover);
+}
+
+.members tbody tr:last-child th,
+.members tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .members tbody th {
@@ -45,7 +61,7 @@
 }
 
 .members__role {
-  padding: 0.25rem 0.5rem;
+  padding: 0.3125rem 0.625rem;
 }
 
 .members__actions {

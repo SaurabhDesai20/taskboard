@@ -1,7 +1,7 @@
 /* Dashboard (/): my due tasks, then my workspaces */
 
 .dashboard {
-  gap: 2rem;
+  gap: 2.5rem;
 }
 
 .dashboard__section {
@@ -14,7 +14,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 @media (max-width: 48rem) {
@@ -23,11 +23,27 @@
   }
 }
 
+/* Each group is a glass panel holding solid task cards. */
 .due-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
   min-width: 0;
+  padding: 1.25rem;
+  background-color: var(--color-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Already on glass: the empty message is a quiet well, not a second glass layer. */
+.due-group .empty-state {
+  padding: 1.25rem;
+  background-color: var(--color-surface-sunken);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .due-group__heading {
