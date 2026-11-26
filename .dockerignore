@@ -1,0 +1,33 @@
+# .dockerignore: decides which files Docker may use when building the image.
+# Approach: ALLOWLIST. Ignore everything, then allow only what the image needs.
+# New files (including secrets like .env) stay out automatically.
+
+# 1) Ignore everything...
+*
+
+# 2) ...then allow only what the build needs.
+
+# Backend: application code, database migrations, dependency lists
+!backend/app/
+!backend/alembic/
+!backend/alembic.ini
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/.python-version
+
+# Frontend: source code and build config
+# (node_modules is NOT copied; packages are installed fresh inside the image)
+!frontend/src/
+!frontend/public/
+!frontend/index.html
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig*.json
+!frontend/vite.config.ts
+
+# 3) Even inside allowed folders, never send caches or compiled files.
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
